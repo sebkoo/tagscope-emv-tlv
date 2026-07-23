@@ -1,5 +1,7 @@
 package io.github.sebkoo.tagscope.tlv
 
+import java.util.Collections
+
 /**
  * One BER-TLV data object, together with the objects nested inside it.
  *
@@ -11,8 +13,8 @@ package io.github.sebkoo.tagscope.tlv
  * the parent's value, so every offset in a tree refers to the same coordinate system as the
  * offsets carried by [TlvError].
  *
- * Instances are immutable: the value octets and the child list are both copied on the way in, and
- * [valueBytes] hands out a fresh copy on the way out.
+ * Instances are immutable: the value octets and the child list are both copied on the way in,
+ * [children] refuses every mutation, and [valueBytes] hands out a fresh copy on the way out.
  *
  * EMV Book 3, Annex B; ISO/IEC 7816-4 §5.2.2.
  *
@@ -29,8 +31,17 @@ public class TlvNode(
 ) {
     private val valueOctets: ByteArray = value.copyOf()
 
-    /** The data objects nested inside this one, in the order they appear. Empty for a leaf. */
-    public val children: List<TlvNode> = children.toList()
+    /**
+     * The data objects nested inside this one, in the order they appear. Empty for a leaf.
+     *
+     * Copied on the way in and then wrapped, so neither the list the caller passed to the
+     * constructor nor a cast back to `MutableList` can reach a node's children: Kotlin's
+     * read-only `List` is the same JVM type as `MutableList`, so without the wrapper the cast
+     * succeeds and `add` mutates a node that documents itself as immutable. The wrapper goes on
+     * whatever the size, so a leaf and a parent refuse mutation the same way rather than
+     * inheriting whichever read-only list `toList` happened to return.
+     */
+    public val children: List<TlvNode> = Collections.unmodifiableList(children.toList())
 
     init {
         // Preconditions on the value object, not parse errors. Malformed input never reaches

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 /**
  * TlvNode is not a data class, because a generated `equals` would compare the value octets by
@@ -69,5 +70,70 @@ class TlvNodeTest {
         node.valueBytes()[0] = 0xFF.toByte()
 
         assertArrayEquals(hex("0001"), node.valueBytes())
+    }
+
+    // Kotlin's read-only List and MutableList are the same JVM type, so a cast is all it takes to
+    // reach a node's children. These pin that the cast buys nothing.
+    //
+    // Every template below holds two children on purpose. `toList()` returns an immutable list of
+    // its own for a list of nought or one element, so a one-child template would refuse mutation
+    // even without the wrapper and these tests would pass against the defect they exist to catch.
+
+    @Test
+    fun `a caller cannot add to a node's children`() {
+        val node = TlvParser.parse(hex("A506880101880102")).expectSuccess().single()
+
+        val castBack = node.children as MutableList<TlvNode>
+
+        assertThrows<UnsupportedOperationException> { castBack.add(node) }
+        assertEquals(2, node.children.size)
+    }
+
+    @Test
+    fun `a caller cannot clear a node's children`() {
+        val node = TlvParser.parse(hex("A506880101880102")).expectSuccess().single()
+
+        val castBack = node.children as MutableList<TlvNode>
+
+        assertThrows<UnsupportedOperationException> { castBack.clear() }
+        assertEquals(2, node.children.size)
+        assertArrayEquals(hex("01"), node.children[0].valueBytes())
+    }
+
+    @Test
+    fun `a leaf refuses mutation the same way a parent does`() {
+        val leaf = TlvParser.parse(hex("880101")).expectSuccess().single()
+
+        val castBack = leaf.children as MutableList<TlvNode>
+
+        assertThrows<UnsupportedOperationException> { castBack.add(leaf) }
+        assertEquals(emptyList<TlvNode>(), leaf.children)
+    }
+
+    @Test
+    fun `the list handed to the constructor is copied, so later changes do not reach the node`() {
+        val template = TlvParser.parse(hex("A506880101880102")).expectSuccess().single()
+        val handedIn = template.children.toMutableList()
+
+        val node =
+            TlvNode(
+                tag = template.tag,
+                length = template.length,
+                value = template.valueBytes(),
+                children = handedIn,
+                offset = template.offset,
+            )
+        handedIn.clear()
+
+        assertEquals(template, node)
+    }
+
+    @Test
+    fun `wrapping the children leaves equality and hashing structural`() {
+        val node = TlvParser.parse(hex("A506880101880102")).expectSuccess().single()
+        val plain = listOf(node.children[0], node.children[1])
+
+        assertEquals(plain, node.children)
+        assertEquals(plain.hashCode(), node.children.hashCode())
     }
 }
