@@ -111,12 +111,17 @@ class TagDictionaryTest {
     }
 
     @Test
-    fun `every constructed entry is var, and so are the two primitives that hold a run of values`() {
+    fun `var means variable length rather than constructed, so two primitives carry it as well`() {
         val varFormatted = TagDictionary.entries.filter { it.format == VAR }
 
-        // 80 is a run of values with no tags, 94 a run of four-octet entries; Annex A prints
-        // var. for both. The DOLs are runs too but Annex A prints b, so they stay b here.
+        // Annex A1 prints var. for all six: the templates 6F, 70, 77 and A5, and the primitives
+        // 80, a run of values carrying no tags, and 94, a run of four-octet entries. Book 3 §4.3
+        // defines var. as variable length holding any bit combination, so a primitive carrying it
+        // is ordinary rather than an anomaly. The DOLs are variable-length runs too, but Annex A1
+        // prints b for them, so they stay b here.
         assertEquals(listOf("6F", "70", "77", "80", "94", "A5"), varFormatted.map { it.tag.hex }.sorted())
+        // The converse does hold, and is worth pinning: nothing constructed is formatted anything
+        // but var. Read off the tag, never off this column.
         for (info in TagDictionary.entries.filter { it.isConstructed }) {
             assertEquals(VAR, info.format, info.tag.hex)
         }
