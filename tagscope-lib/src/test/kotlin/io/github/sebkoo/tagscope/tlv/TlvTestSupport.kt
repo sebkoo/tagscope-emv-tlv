@@ -28,3 +28,21 @@ internal fun TlvResult<*>.expectFailure(): TlvError =
         is TlvResult.Success -> fail("expected a failed read, got $value")
         is TlvResult.Failure -> error
     }
+
+/**
+ * Wraps [innermost] in [levels] nested `A5` templates, so the payload holds `levels + 1` levels of
+ * data objects and [innermost] sits deepest. Each level adds two octets, and the k-th template
+ * from the outside starts at offset `2 * (k - 1)`.
+ */
+internal fun nested(
+    levels: Int,
+    innermost: ByteArray = hex("880101"),
+): ByteArray {
+    var payload = innermost
+    repeat(levels) {
+        // Short-form lengths only, so the offsets in the tests stay easy to work out by hand.
+        require(payload.size <= 0x7F) { "nested($levels) needs a long-form length" }
+        payload = hex("A5") + payload.size.toByte() + payload
+    }
+    return payload
+}

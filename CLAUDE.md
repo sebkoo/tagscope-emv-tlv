@@ -50,6 +50,13 @@ CI runs exactly `./gradlew ktlintCheck test build` on every push and pull reques
   wrong, say so explicitly and justify it byte by byte.
 - **Every bug becomes a regression vector.** Before fixing a defect, add the input that
   reproduces it to the vector suite.
+- **Only `00` is filler.** ISO/IEC 7816-4 §5.2.2.1 permits both `00` and `FF` octets without
+  meaning before, between and after data objects; EMV Book 3, Annex B1 permits only `00`. This
+  library parses EMV data, so the parser skips `00` at any object boundary and reports a stray
+  `FF` as `TlvError.UnexpectedFillerOctet`. That is deliberate for an inspection tool: an `FF`
+  where a tag should begin usually means a short read or an erased record, which is the thing
+  the user is looking for. Do not widen the filler set to match ISO; if a lenient mode is ever
+  wanted, it belongs behind an explicit option, never in the default.
 
 ## Card data rules
 

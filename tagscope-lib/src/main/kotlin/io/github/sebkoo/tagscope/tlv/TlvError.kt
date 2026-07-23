@@ -70,4 +70,54 @@ public sealed class TlvError {
         override val offset: Int,
         public val declaredOctets: Int,
     ) : TlvError()
+
+    /**
+     * A data object declares [declaredLength] value octets but only [availableOctets] remain in
+     * the buffer.
+     */
+    public data class TruncatedValue(
+        override val offset: Int,
+        public val declaredLength: Int,
+        public val availableOctets: Int,
+    ) : TlvError()
+
+    /**
+     * The data object beginning at [offset] is not contained in the constructed value holding
+     * it, whose own value ends at [parentEnd]. Here [offset] is the first identifier octet of the
+     * offending object rather than a missing octet, because the object, not the buffer, is what
+     * is wrong.
+     *
+     * Distinct from [TruncatedValue]: the octets are present in the buffer, they just belong to
+     * something else. This covers an object whose value runs past its parent, and equally one
+     * whose identifier or length field does, in which case the octets that would have said how
+     * long the object is lie outside the parent and are not reported: a length lifted from a
+     * neighbouring object is not this object's length.
+     */
+    public data class ChildOverrunsParent(
+        override val offset: Int,
+        public val parentEnd: Int,
+    ) : TlvError()
+
+    /**
+     * Data objects are nested more than [maxDepth] levels deep, which is more than this parser
+     * follows. See [TlvParser.MAX_DEPTH]. Here [offset] is where the too-deep sequence begins.
+     */
+    public data class NestingTooDeep(
+        override val offset: Int,
+        public val maxDepth: Int,
+    ) : TlvError()
+
+    /**
+     * An `FF` octet appears at [offset], where a data object was expected.
+     *
+     * ISO/IEC 7816-4 §5.2.2.1 permits both `00` and `FF` octets without meaning before, between
+     * and after data objects; EMV Book 3, Annex B1 permits only `00`. This library parses EMV
+     * data, so it skips `00` and reports `FF`. There is no octet field because the octet is
+     * always `FF`: a `00` in the same position is filler and is skipped.
+     *
+     * An `FF` in the length field is a different failure, [ReservedLengthOctet].
+     */
+    public data class UnexpectedFillerOctet(
+        override val offset: Int,
+    ) : TlvError()
 }
