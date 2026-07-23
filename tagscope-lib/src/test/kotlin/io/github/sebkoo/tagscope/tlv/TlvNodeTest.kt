@@ -26,6 +26,30 @@ class TlvNodeTest {
     }
 
     @Test
+    fun `the value offset skips the identifier and length fields, at any depth`() {
+        // 6F 15 | 84 0E <14 octets> | A5 03 | 88 01 01 — the outer template's value starts at 2,
+        // and every offset below it is an index into the same buffer.
+        val fci = TlvParser.parse(hex("6F15840E315041592E5359532E4444463031A503880101")).expectSuccess().single()
+        val proprietary = fci.children.last()
+        val sfi = proprietary.children.single()
+
+        assertEquals(2, fci.valueOffset)
+        assertEquals(20, proprietary.valueOffset)
+        assertEquals(22, sfi.valueOffset)
+        // A two-octet identifier and a long-form length push it further out.
+        val longForm = TlvParser.parse(hex("9F26810101")).expectSuccess().single()
+        assertEquals(4, longForm.valueOffset)
+    }
+
+    @Test
+    fun `an empty value starts one past the object, as a truncation offset would`() {
+        val empty = TlvParser.parse(hex("6F00")).expectSuccess().single()
+
+        assertEquals(2, empty.valueOffset)
+        assertEquals(0, empty.valueBytes().size)
+    }
+
+    @Test
     fun `nodes differing only in their value octets are not equal`() {
         val one = TlvParser.parse(hex("9F36020001")).expectSuccess().single()
         val other = TlvParser.parse(hex("9F36020002")).expectSuccess().single()

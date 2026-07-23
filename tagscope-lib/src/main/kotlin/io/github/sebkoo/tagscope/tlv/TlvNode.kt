@@ -55,6 +55,20 @@ public class TlvNode(
         }
     }
 
+    /**
+     * The index of the first value octet within the parsed buffer.
+     *
+     * [offset] addresses the identifier octets, so this is that plus the identifier and length
+     * fields. Derived rather than stored, because a node that carried both could disagree with
+     * itself; public, because anything reporting which value octet it choked on has to say so in
+     * the coordinate system [offset] and every [TlvError] already use.
+     *
+     * For an empty value this is one past the object's last octet, which is the same convention a
+     * truncation offset follows.
+     */
+    public val valueOffset: Int
+        get() = offset + tag.octetLength + length.octetLength
+
     /** The value octets, exactly as they appear on the wire. A fresh copy on every call. */
     public fun valueBytes(): ByteArray = valueOctets.copyOf()
 
