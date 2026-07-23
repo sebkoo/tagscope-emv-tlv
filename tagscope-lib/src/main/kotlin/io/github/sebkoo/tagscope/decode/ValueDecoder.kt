@@ -8,9 +8,9 @@ import io.github.sebkoo.tagscope.tlv.TlvTag
 /**
  * Reads one data object's value octets according to the format EMV states for its tag.
  *
- * Scalars, plus Track 2 (`57`). Every other `b` and primitive `var.` is handed back as octets, and
- * reading the structure inside `94` or a bit field is a later step; a cryptogram is handed back as
- * octets permanently, by the scope this project keeps.
+ * Scalars, Track 2 (`57`), and the bit fields (AIP, TVR and the Issuer Action Codes, AUC). Every
+ * other `b` and primitive `var.` is handed back as octets, and reading the structure inside `94` is
+ * a later step; a cryptogram is handed back as octets permanently, by the scope this project keeps.
  *
  * The rules it applies:
  *
@@ -83,9 +83,10 @@ public object ValueDecoder {
     }
 
     /**
-     * `b`, which is octets unless the tag says the octets have a structure worth reading. Only
-     * Track 2 (`57`) does so far; a cryptogram (`9F26`) and the Issuer Application Data (`9F10`)
-     * arrive here and go no further, opaque to this library by design rather than merely undecoded.
+     * `b`, which is octets unless the tag says the octets have a structure worth reading: Track 2
+     * (`57`), or one of the bit-field tags [BitFieldTable] carries. A cryptogram (`9F26`) and the
+     * Issuer Application Data (`9F10`) match neither and go no further, opaque to this library by
+     * design rather than merely undecoded.
      */
     private fun binary(
         node: TlvNode,
@@ -93,8 +94,56 @@ public object ValueDecoder {
     ): DecodeResult =
         when (node.tag) {
             TRACK2_TAG -> track2(node, value)
-            else -> DecodeResult.Success(DecodedValue.RawBinary(value))
+            else ->
+                when (val spec = BitFieldTable.specFor(node.tag)) {
+                    null -> DecodeResult.Success(DecodedValue.RawBinary(value))
+                    else -> bitField(node, value, spec)
+                }
         }
+
+    /**
+     * A row of flags per octet, read against the meanings EMV fixes for each bit position.
+     *
+     * The length is checked first: a bit field is a fixed width, and a value of any other length
+     * has nothing to read against the table — the same fixed-shape failure a mis-sized date or
+     * amount is. It is [DecodeError.UnexpectedValueLength], carrying the object's own offset, and it
+     * may carry the lengths because no bit-field tag is cardholder data.
+     *
+     * Then each named bit that is set becomes a [DecodedValue.BitField.SetFlag], and any set bit no
+     * rule named is surfaced as `"RFU"` rather than dropped — a bit set where the spec reserves one
+     * is the anomaly the tool exists to show. The flags come out in wire order, the most significant
+     * bit of the lowest octet first, so they read as the spec's tables do.
+     */
+    private fun bitField(
+        node: TlvNode,
+        value: ByteArray,
+        spec: BitFieldSpec,
+    ): DecodeResult {
+        if (value.size != spec.octetLength) {
+            return DecodeResult.Failure(
+                DecodeError.UnexpectedValueLength(node.tag, node.offset, spec.octetLength, value.size),
+            )
+        }
+        val flags = mutableListOf<DecodedValue.BitField.SetFlag>()
+        val named = IntArray(value.size)
+        for (rule in spec.bits) {
+            val mask = 1 shl (rule.bit - 1)
+            named[rule.byteIndex] = named[rule.byteIndex] or mask
+            if (value[rule.byteIndex].toInt() and mask != 0) {
+                flags += DecodedValue.BitField.SetFlag(rule.byteIndex, rule.bit, rule.meaning)
+            }
+        }
+        for (index in value.indices) {
+            val unnamed = value[index].toInt() and UNSIGNED_OCTET and named[index].inv()
+            for (bit in 1..BITS_PER_OCTET) {
+                if (unnamed and (1 shl (bit - 1)) != 0) {
+                    flags += DecodedValue.BitField.SetFlag(index, bit, RFU)
+                }
+            }
+        }
+        flags.sortWith(compareBy<DecodedValue.BitField.SetFlag> { it.byteIndex }.thenByDescending { it.bit })
+        return DecodeResult.Success(DecodedValue.BitField(value, flags))
+    }
 
     /** `n`, which is digits unless the tag says the digits are a date or an amount. */
     private fun numeric(
@@ -485,6 +534,10 @@ public object ValueDecoder {
     private const val LOW_NIBBLE: Int = 0x0F
     private const val LARGEST_DIGIT: Int = 9
     private const val PADDING_NIBBLE: Int = 0x0F
+
+    /** Bits to a bit-field octet, and the meaning given a set bit the tables do not name. */
+    private const val BITS_PER_OCTET: Int = 8
+    private const val RFU: String = "RFU"
 
     /** Widens a JVM byte, which is signed, to the octet it actually is. */
     private const val UNSIGNED_OCTET: Int = 0xFF

@@ -190,6 +190,79 @@ public sealed interface DecodedValue {
     }
 
     /**
+     * A bit field: value octets that are a row of flags, decoded into the meaning EMV states for
+     * each bit that is set.
+     *
+     * The Application Interchange Profile (`82`), the Terminal Verification Results (`95`) and the
+     * Issuer Action Codes (`9F0D`/`9F0E`/`9F0F`, which share the TVR's layout), and the Application
+     * Usage Control (`9F07`): each octet a row of eight flags whose meaning is fixed by position,
+     * not by value. [flags] lists the bits that were set, each with the meaning Book 3 states for
+     * its position; a set bit no meaning names — a bit reserved for a future version, or one the
+     * table does not yet carry — is surfaced as `"RFU"` rather than dropped, since a bit set where
+     * the spec reserves one is the anomaly an inspection tool is looking for.
+     *
+     * None of these tags is cardholder data, so — unlike [RawBinary] and [Track2] — [toString]
+     * prints the meanings, which are the point of decoding a bit field at all. Not a data class for
+     * the reason [RawBinary] is not: the value is a `ByteArray`, which a data class would compare by
+     * identity. The octets are copied in and copied out, and [equals] compares both the octets and
+     * the interpretation, because `82` and `9F07` are each two octets and identical bytes under
+     * different tags decode to different flags.
+     *
+     * EMV Book 3 v4.4, Annex C: C1 (AIP `82`), C2 (AUC `9F07`), C5 (TVR `95`, and the Issuer Action
+     * Codes that share its layout).
+     */
+    public class BitField(
+        bytes: ByteArray,
+        flags: List<SetFlag>,
+    ) : DecodedValue {
+        private val octets: ByteArray = bytes.copyOf()
+
+        /** The bits that were set, each with the meaning EMV gives its position, in wire order. */
+        public val flags: List<SetFlag> = Collections.unmodifiableList(flags.toList())
+
+        /** The value octets, exactly as they appear on the wire. A fresh copy on every call. */
+        public fun bytes(): ByteArray = octets.copyOf()
+
+        /** How many octets there are, without handing them out. */
+        public val size: Int
+            get() = octets.size
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is BitField) return false
+            return octets.contentEquals(other.octets) && flags == other.flags
+        }
+
+        override fun hashCode(): Int {
+            var result = octets.contentHashCode()
+            result = HASH_FACTOR * result + flags.hashCode()
+            return result
+        }
+
+        /** The meanings, not a count: this is not cardholder data, and the meanings are the point. */
+        override fun toString(): String = "BitField(${flags.joinToString { it.meaning }})"
+
+        /**
+         * One set bit and what EMV says it means.
+         *
+         * @property byteIndex which octet of the value, from zero — Book 3's "Byte 1" is index 0.
+         * @property bit which bit of that octet, EMV's `b1`..`b8`, where `b8` is the most
+         *   significant, `0x80`.
+         * @property meaning the Book 3 wording for this position, or `"RFU"` for a set bit no rule
+         *   names.
+         */
+        public data class SetFlag(
+            public val byteIndex: Int,
+            public val bit: Int,
+            public val meaning: String,
+        )
+
+        private companion object {
+            private const val HASH_FACTOR: Int = 31
+        }
+    }
+
+    /**
      * This data object's value is other data objects, so there is no scalar here to decode.
      *
      * Decided by bit 6 of the first identifier octet and nothing else, the same rule `TlvParser`
