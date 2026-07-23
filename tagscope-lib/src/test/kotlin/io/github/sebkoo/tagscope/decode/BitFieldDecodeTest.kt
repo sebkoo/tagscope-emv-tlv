@@ -127,6 +127,114 @@ class BitFieldDecodeTest {
     }
 
     @Test
+    fun `AIP names every bit of both octets`() {
+        // All sixteen bits set: byte 1 is fully named, byte 2 is three contactless-reserved bits,
+        // four plain RFU, and one more contactless-reserved bit. Pins every AIP position at once.
+        assertEquals(
+            listOf(
+                SetFlag(0, 8, "XDA supported"),
+                SetFlag(0, 7, "SDA supported"),
+                SetFlag(0, 6, "DDA supported"),
+                SetFlag(0, 5, "Cardholder verification is supported"),
+                SetFlag(0, 4, "Terminal risk management is to be performed"),
+                SetFlag(0, 3, "Issuer authentication is supported"),
+                SetFlag(0, 2, "Reserved for use by the EMV Contactless Specifications"),
+                SetFlag(0, 1, "CDA supported"),
+                SetFlag(1, 8, "Reserved for use by the EMV Contactless Specifications"),
+                SetFlag(1, 7, "Reserved for use by the EMV Contactless Specifications"),
+                SetFlag(1, 6, "Reserved for use by the EMV Contactless Specifications"),
+                SetFlag(1, 5, "RFU"),
+                SetFlag(1, 4, "RFU"),
+                SetFlag(1, 3, "RFU"),
+                SetFlag(1, 2, "RFU"),
+                SetFlag(1, 1, "Reserved for use by the EMV Contactless Specifications"),
+            ),
+            flagsOf("8202FFFF"),
+        )
+    }
+
+    @Test
+    fun `AUC names every bit of both octets`() {
+        assertEquals(
+            listOf(
+                SetFlag(0, 8, "Valid for domestic cash transactions"),
+                SetFlag(0, 7, "Valid for international cash transactions"),
+                SetFlag(0, 6, "Valid for domestic goods"),
+                SetFlag(0, 5, "Valid for international goods"),
+                SetFlag(0, 4, "Valid for domestic services"),
+                SetFlag(0, 3, "Valid for international services"),
+                SetFlag(0, 2, "Valid at ATMs"),
+                SetFlag(0, 1, "Valid at terminals other than ATMs"),
+                SetFlag(1, 8, "Domestic cashback allowed"),
+                SetFlag(1, 7, "International cashback allowed"),
+                SetFlag(1, 6, "RFU"),
+                SetFlag(1, 5, "RFU"),
+                SetFlag(1, 4, "RFU"),
+                SetFlag(1, 3, "RFU"),
+                SetFlag(1, 2, "RFU"),
+                SetFlag(1, 1, "RFU"),
+            ),
+            flagsOf("9F0702FFFF"),
+        )
+    }
+
+    @Test
+    fun `TVR names every bit of all five octets`() {
+        // All forty bits set: pins every TVR position and meaning, including byte 2 b3's plain RFU
+        // and byte 5's two contactless-reserved bits. The IACs share this table, so pinning it here
+        // pins them too.
+        assertEquals(
+            listOf(
+                SetFlag(0, 8, "Offline data authentication was not performed"),
+                SetFlag(0, 7, "SDA failed"),
+                SetFlag(0, 6, "ICC data missing"),
+                SetFlag(0, 5, "Card appears on terminal exception file"),
+                SetFlag(0, 4, "DDA failed"),
+                SetFlag(0, 3, "CDA failed"),
+                SetFlag(0, 2, "SDA selected"),
+                SetFlag(0, 1, "XDA selected"),
+                SetFlag(1, 8, "ICC and terminal have different application versions"),
+                SetFlag(1, 7, "Expired application"),
+                SetFlag(1, 6, "Application not yet effective"),
+                SetFlag(1, 5, "Requested service not allowed for card product"),
+                SetFlag(1, 4, "New card"),
+                SetFlag(1, 3, "RFU"),
+                SetFlag(1, 2, "Biometric performed and successful"),
+                SetFlag(1, 1, "Biometric template format not supported"),
+                SetFlag(2, 8, "Cardholder verification was not successful"),
+                SetFlag(2, 7, "Unrecognised CVM"),
+                SetFlag(2, 6, "PIN Try Limit exceeded"),
+                SetFlag(2, 5, "PIN entry required and PIN pad not present or not working"),
+                SetFlag(2, 4, "PIN entry required, PIN pad present, but PIN was not entered"),
+                SetFlag(2, 3, "Online CVM captured"),
+                SetFlag(2, 2, "Biometric required but Biometric capture device not working"),
+                SetFlag(
+                    2,
+                    1,
+                    "Biometric required, Biometric capture device present, but Biometric Subtype entry was bypassed",
+                ),
+                SetFlag(3, 8, "Transaction exceeds floor limit"),
+                SetFlag(3, 7, "Lower consecutive offline limit exceeded"),
+                SetFlag(3, 6, "Upper consecutive offline limit exceeded"),
+                SetFlag(3, 5, "Transaction selected randomly for online processing"),
+                SetFlag(3, 4, "Merchant forced transaction online"),
+                SetFlag(3, 3, "Biometric Try Limit exceeded"),
+                SetFlag(3, 2, "A selected Biometric Type not supported"),
+                SetFlag(3, 1, "XDA signature verification failed"),
+                SetFlag(4, 8, "Default TDOL used"),
+                SetFlag(4, 7, "Issuer authentication failed"),
+                SetFlag(4, 6, "Script processing failed before final GENERATE AC"),
+                SetFlag(4, 5, "Script processing failed after final GENERATE AC"),
+                SetFlag(4, 4, "Reserved for use by the EMV Contactless Specifications"),
+                SetFlag(4, 3, "CA ECC key missing"),
+                SetFlag(4, 2, "ECC key recovery failed"),
+                SetFlag(4, 1, "Reserved for use by the EMV Contactless Specifications"),
+            ),
+            flagsOf("9505FFFFFFFFFF"),
+        )
+    }
+
+    @Test
     fun `a bit field is not sensitive and comes back bare`() {
         assertFalse(decode("82020000").expectValue() is Sensitive, "a bit field is not cardholder data")
     }
@@ -176,13 +284,16 @@ class BitFieldDecodeTest {
         assertEquals(CryptogramType.ARQC, CryptogramType.entries[selection.value])
     }
 
+    private fun reasonOf(text: String): EnumSelection = selectionsOf(text).first { it.label == "Reason/advice code" }
+
     @Test
-    fun `a CID reason code the spec does not define is RFU`() {
-        // b3 b2 b1 = 111; only 000..011 are defined.
-        assertEquals(
-            EnumSelection(0, "Reason/advice code", 7, "RFU"),
-            selectionsOf("9F270107").first { it.label == "Reason/advice code" },
-        )
+    fun `CID names every defined reason advice code, and RFU beyond them`() {
+        assertEquals(EnumSelection(0, "Reason/advice code", 0, "No information given"), reasonOf("9F270100"))
+        assertEquals(EnumSelection(0, "Reason/advice code", 1, "Service not allowed"), reasonOf("9F270101"))
+        assertEquals(EnumSelection(0, "Reason/advice code", 2, "PIN Try Limit exceeded"), reasonOf("9F270102"))
+        assertEquals(EnumSelection(0, "Reason/advice code", 3, "Issuer authentication failed"), reasonOf("9F270103"))
+        // b3 b2 b1 = 111; only 000..011 are defined, so the rest are RFU.
+        assertEquals(EnumSelection(0, "Reason/advice code", 7, "RFU"), reasonOf("9F270107"))
     }
 
     @Test
@@ -219,9 +330,14 @@ class BitFieldDecodeTest {
 
     @Test
     fun `CVM Results byte 1 of 3F is Book 4's No CVM performed`() {
+        // 3F 00 00: byte 1 is Book 4's "No CVM performed"; byte 2 reads Always; byte 3 Unknown.
         assertEquals(
-            EnumSelection(0, "CVM performed", 0x3F, "No CVM performed"),
-            selectionsOf("9F34033F0000").first { it.label == "CVM performed" },
+            listOf(
+                EnumSelection(0, "CVM performed", 0x3F, "No CVM performed"),
+                EnumSelection(1, "CVM condition", 0x00, "Always"),
+                EnumSelection(2, "CVM result", 0x00, "Unknown"),
+            ),
+            selectionsOf("9F34033F0000"),
         )
     }
 
@@ -235,8 +351,27 @@ class BitFieldDecodeTest {
 
     @Test
     fun `a CVM byte 1 reserved bit 8 is surfaced as RFU`() {
-        // 80 00 00: b8 of byte 1 is RFU; the method reads 0 (Fail CVM processing).
+        // 80 00 00: b8 of byte 1 is RFU; the method reads 0 (Fail CVM processing), result Unknown.
         assertEquals(listOf(SetFlag(0, 8, "RFU")), flagsOf("9F3403800000"))
+        assertEquals(
+            listOf(
+                EnumSelection(0, "CVM performed", 0x00, "Fail CVM processing"),
+                EnumSelection(1, "CVM condition", 0x00, "Always"),
+                EnumSelection(2, "CVM result", 0x00, "Unknown"),
+            ),
+            selectionsOf("9F3403800000"),
+        )
+    }
+
+    private fun methodOf(text: String): String = selectionsOf(text).first { it.label == "CVM performed" }.meaning
+
+    @Test
+    fun `CVM method reserved ranges keep their distinct labels`() {
+        // One representative from each reserved range of Table 43 (byte 1, mask 0x3F), so a swap
+        // between the three distinct "reserved" wordings cannot pass unseen.
+        assertEquals("RFU (reserved for future use by this specification)", methodOf("9F3403150000"))
+        assertEquals("Reserved for use by the individual payment systems", methodOf("9F3403250000"))
+        assertEquals("Reserved for use by the issuer", methodOf("9F3403350000"))
     }
 
     @Test
