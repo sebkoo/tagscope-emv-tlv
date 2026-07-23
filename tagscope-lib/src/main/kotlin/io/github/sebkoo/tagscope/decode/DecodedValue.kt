@@ -80,6 +80,81 @@ public sealed interface DecodedValue {
     ) : DecodedValue
 
     /**
+     * Track 2 Equivalent Data (tag `57`), decoded into its fields.
+     *
+     * The magnetic-stripe track as the chip carries it: the [pan], then the card's [expiry] and
+     * [serviceCode], then whatever [discretionaryData] the issuer put after them. On the wire
+     * these are packed BCD, the PAN split from the rest by a `D` nibble and the whole thing padded
+     * with `F` to a full octet; none of that survives here, only the fields. `ValueDecoder` reads
+     * the structure; interpreting it — what the service-code digits mean, which century the year
+     * belongs to — is left to the caller.
+     *
+     * Cardholder data, all of it, which is why tag `57` is wrapped in [Sensitive]: the value, and
+     * [pan] above all, is reached only through [Sensitive.reveal], the deliberate unwrap that reads
+     * at the call site as the decision it is. [toString] is redacted here as well, so a revealed
+     * value that finds its way into a log or an exception message still does not print the PAN —
+     * the same guard [RawBinary] and [Sensitive] keep.
+     *
+     * Not a data class, for the reason [RawBinary] is not one: a generated `toString` would print
+     * every field, and a generated `copy`/`componentN` would hand the PAN out without anyone
+     * naming it.
+     *
+     * @property pan the Application PAN, the digits before the separator.
+     * @property expiry the expiration date the track carries — see [Expiry].
+     * @property serviceCode the three service-code digits, kept as digits and not interpreted.
+     * @property discretionaryData the issuer's discretionary digits after the service code, empty
+     *   when there are none. The `F` padding is not part of it.
+     */
+    public class Track2(
+        public val pan: String,
+        public val expiry: Expiry,
+        public val serviceCode: String,
+        public val discretionaryData: String,
+    ) : DecodedValue {
+        /**
+         * A Track 2 expiry: two digits of year and a month, and nothing more.
+         *
+         * No century, for the reason [Date] gives — windowing `26` into a full year is the
+         * reader's policy — and no day, because Track 2 states none. [month] is `1..12`;
+         * [yearOfCentury] is the two digits exactly as written, `0..99`.
+         *
+         * Its `toString` prints these two numbers, where the parent [Track2] redacts its own. That
+         * is deliberate and not an oversight: the redaction guards the accidental log of the whole
+         * value, PAN included, whereas a field reached only past [Sensitive.reveal] is an ordinary
+         * value — as [Track2.pan] is, a bare `String` once revealed — and prints like one. An
+         * expiry with no PAN beside it is also what the dictionary marks non-sensitive as `5F24`.
+         */
+        public data class Expiry(
+            public val yearOfCentury: Int,
+            public val month: Int,
+        )
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Track2) return false
+            return pan == other.pan &&
+                expiry == other.expiry &&
+                serviceCode == other.serviceCode &&
+                discretionaryData == other.discretionaryData
+        }
+
+        override fun hashCode(): Int {
+            var result = pan.hashCode()
+            result = HASH_FACTOR * result + expiry.hashCode()
+            result = HASH_FACTOR * result + serviceCode.hashCode()
+            result = HASH_FACTOR * result + discretionaryData.hashCode()
+            return result
+        }
+
+        /** Redacted: this is cardholder data, and a `toString` is exactly how it reaches a log. */
+        override fun toString(): String = "Track2(redacted)"
+
+        private companion object {
+            private const val HASH_FACTOR: Int = 31
+        }
+    }
+
+    /**
      * The value octets, undecoded.
      *
      * What `b` gets, and what a primitive `var.` gets as well, since §4.3 defines `var.` as any

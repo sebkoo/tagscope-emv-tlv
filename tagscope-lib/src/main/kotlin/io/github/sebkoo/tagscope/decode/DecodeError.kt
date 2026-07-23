@@ -18,11 +18,15 @@ import io.github.sebkoo.tagscope.tlv.TlvTag
  *
  * **An error says where, not what.** [NotBcd] and [MisplacedPadding] carry no octet on purpose:
  * the PAN is `cn`, so an octet in one of those would be two digits of a PAN, in whatever log or
- * exception message the error ends up in. [UnexpectedCharacter] does carry its octet, because only
- * `an` and `ans` produce it and no `an` or `ans` tag in this dictionary is marked sensitive; the
- * date variants carry their numbers on the same reasoning. That reasoning is a fact about the
- * dictionary rather than a law, so `ValueDecoderTest` pins it, and if a sensitive tag is ever
- * given a text or date format the test fails and this comment has to be revisited.
+ * exception message the error ends up in. The Track 2 variants ([Track2NoSeparator],
+ * [Track2MultipleSeparators], [Track2PanTooLong], [Track2MissingFields], [Track2MonthOutOfRange])
+ * follow the same rule and carry only offsets and counts, because tag `57` holds the PAN outright;
+ * [Track2MonthOutOfRange] pointedly does *not* carry its month, though the date's [MonthOutOfRange]
+ * does, since the date tags are not sensitive and `57` is. [UnexpectedCharacter] does carry its
+ * octet, because only `an` and `ans` produce it and no `an` or `ans` tag in this dictionary is
+ * marked sensitive; the date variants carry their numbers on the same reasoning. That reasoning is
+ * a fact about the dictionary rather than a law, so `ValueDecoderTest` pins it, and if a sensitive
+ * tag is ever given a text or date format the test fails and this comment has to be revisited.
  */
 public sealed class DecodeError {
     /** The tag whose value failed to decode. */
@@ -33,7 +37,9 @@ public sealed class DecodeError {
 
     /**
      * A nibble that is not a decimal digit turned up where the format requires one: any of `A`
-     * to `F` in an `n` value, or `A` to `E` in a `cn` value, where `F` is padding instead.
+     * to `F` in an `n` value, `A` to `E` in a `cn` value where `F` is padding instead, or — in
+     * Track 2 (`57`) — any of `A`, `B`, `C` or `E`, where `D` is the field separator and `F` is
+     * padding.
      *
      * [offset] is the octet holding the offending nibble; which of the two it was is not reported,
      * for the reason given on this class.
@@ -44,10 +50,11 @@ public sealed class DecodeError {
     ) : DecodeError()
 
     /**
-     * A `cn` value has a digit after its padding started. §4.3 pads `cn` with *trailing* `F`s, so
-     * an `F` with a digit behind it is not padding and the value is not a compressed numeric one.
+     * A digit turned up after the trailing `F` padding started, so the `F` was not padding after
+     * all: in a `cn` value (§4.3 pads `cn` with *trailing* `F`s), or in Track 2 (`57`), where the
+     * `F` padding likewise runs only to the end.
      *
-     * [offset] is the octet holding the digit that should not be there.
+     * [offset] is the octet holding the nibble that should not be there.
      */
     public data class MisplacedPadding(
         override val tag: TlvTag,
@@ -113,5 +120,70 @@ public sealed class DecodeError {
         override val offset: Int,
         public val day: Int,
         public val maxDay: Int,
+    ) : DecodeError()
+
+    /**
+     * Track 2 has no field separator: no `D` nibble divides the PAN from the fields after it, so
+     * there is nothing to decode as a track.
+     *
+     * [offset] is the object's own first identifier octet, not a value octet: the whole value is
+     * wrong, not one place in it, the same way [UnexpectedValueLength] points at the object.
+     */
+    public data class Track2NoSeparator(
+        override val tag: TlvTag,
+        override val offset: Int,
+    ) : DecodeError()
+
+    /**
+     * Track 2 has more than one field separator. A second `D` nibble means the split between the
+     * PAN and the rest is ambiguous, so the value is not a well-formed track.
+     *
+     * [offset] is the octet holding the second `D`, the one that should not be there.
+     */
+    public data class Track2MultipleSeparators(
+        override val tag: TlvTag,
+        override val offset: Int,
+    ) : DecodeError()
+
+    /**
+     * Track 2's PAN is longer than [maxDigits], the nineteen digits ISO/IEC 7813 allows.
+     *
+     * [actualDigits] is how many digits were read before the separator — a count, never the digits
+     * themselves. [offset] is the object's own first identifier octet: the PAN field as a whole is
+     * over-length, not one octet in it.
+     */
+    public data class Track2PanTooLong(
+        override val tag: TlvTag,
+        override val offset: Int,
+        public val actualDigits: Int,
+        public val maxDigits: Int,
+    ) : DecodeError()
+
+    /**
+     * Track 2 has too few digits after its separator to hold the expiry (`YYMM`) and service code
+     * (three digits) that must follow it.
+     *
+     * [foundDigits] is how many digits there were after the separator, [requiredDigits] the seven
+     * needed at least. Counts, never the digits. [offset] is the object's own first identifier
+     * octet: the fields after the separator are short as a whole.
+     */
+    public data class Track2MissingFields(
+        override val tag: TlvTag,
+        override val offset: Int,
+        public val foundDigits: Int,
+        public val requiredDigits: Int,
+    ) : DecodeError()
+
+    /**
+     * Track 2's expiry names a month that is not `01` to `12`.
+     *
+     * The month value is deliberately not carried, unlike the date [MonthOutOfRange]: tag `57` is
+     * cardholder data, so an error here names where and not what. [offset] is the octet the month
+     * field begins in — Track 2's fields are nibble-granular, not octet-aligned, so that octet may
+     * also hold the low year digit that precedes the month.
+     */
+    public data class Track2MonthOutOfRange(
+        override val tag: TlvTag,
+        override val offset: Int,
     ) : DecodeError()
 }

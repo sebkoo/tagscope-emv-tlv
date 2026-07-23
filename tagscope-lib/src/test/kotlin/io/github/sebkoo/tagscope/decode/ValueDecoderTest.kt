@@ -6,6 +6,7 @@ import io.github.sebkoo.tagscope.decode.DecodedValue.Date
 import io.github.sebkoo.tagscope.decode.DecodedValue.Digits
 import io.github.sebkoo.tagscope.decode.DecodedValue.RawBinary
 import io.github.sebkoo.tagscope.decode.DecodedValue.Sensitive
+import io.github.sebkoo.tagscope.decode.DecodedValue.Track2
 import io.github.sebkoo.tagscope.tags.TagDictionary
 import io.github.sebkoo.tagscope.tags.TagFormat
 import io.github.sebkoo.tagscope.tags.TagInfo
@@ -71,11 +72,16 @@ class ValueDecoderTest {
     }
 
     @Test
-    fun `track 2 is wrapped as well, though it is only octets here`() {
-        val track2 = decode("570411112222").expectValue()
+    fun `track 2 comes back wrapped, and its fields are only reachable by asking`() {
+        // 57 decodes to a structured Track2 now; the per-field and malformed cases live in
+        // Track2DecodeTest. What is pinned here is only that the whole thing is masked, so the PAN
+        // inside it is reached solely through reveal().
+        val track2 = decode("570F1111222233334441D261220100000F").expectValue()
 
-        assertTrue(track2 is Sensitive)
-        assertEquals(RawBinary("11112222".octets()), (track2 as Sensitive).reveal())
+        assertTrue(track2 is Sensitive, "track 2 holds the PAN and must not come back bare")
+        val revealed = (track2 as Sensitive).reveal()
+        assertTrue(revealed is Track2, "revealing track 2 gives its decoded fields")
+        assertEquals("1111222233334441", (revealed as Track2).pan)
     }
 
     @Test

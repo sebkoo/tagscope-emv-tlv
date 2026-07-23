@@ -8,9 +8,9 @@ import io.github.sebkoo.tagscope.tlv.TlvTag
 /**
  * Reads one data object's value octets according to the format EMV states for its tag.
  *
- * Scalars only. `b` and a primitive `var.` are handed back as octets, and reading the structure
- * inside `57`, `94` or a bit field is a later step; a cryptogram is handed back as octets
- * permanently, by the scope this project keeps.
+ * Scalars, plus Track 2 (`57`). Every other `b` and primitive `var.` is handed back as octets, and
+ * reading the structure inside `94` or a bit field is a later step; a cryptogram is handed back as
+ * octets permanently, by the scope this project keeps.
  *
  * The rules it applies:
  *
@@ -73,12 +73,28 @@ public object ValueDecoder {
             TagFormat.COMPRESSED_NUMERIC -> digits(node, value, padsWithF = true)
             TagFormat.ALPHANUMERIC -> text(node, value, ::isAlphanumeric, ::isSpaceOrNull)
             TagFormat.ALPHANUMERIC_SPECIAL -> text(node, value, ::isCommonCharacter, ::isNull)
-            // §4.3 defines var. as any bit combination, which is what b is, so the two answer the
-            // same way. Nothing is lost: a caller wanting the structure inside 80 or 94 has the
-            // octets, and reading it is a later commit's job.
-            TagFormat.BINARY, TagFormat.VAR -> DecodeResult.Success(DecodedValue.RawBinary(value))
+            TagFormat.BINARY -> binary(node, value)
+            // §4.3 defines var. as any bit combination, which is what b is with no tag-specific
+            // reading, so a primitive var. (80, 94) is handed back as octets exactly as an opaque
+            // b tag is. A caller wanting the structure inside 80 or 94 has the octets; reading it
+            // is a later commit's job.
+            TagFormat.VAR -> DecodeResult.Success(DecodedValue.RawBinary(value))
         }
     }
+
+    /**
+     * `b`, which is octets unless the tag says the octets have a structure worth reading. Only
+     * Track 2 (`57`) does so far; a cryptogram (`9F26`) and the Issuer Application Data (`9F10`)
+     * arrive here and go no further, opaque to this library by design rather than merely undecoded.
+     */
+    private fun binary(
+        node: TlvNode,
+        value: ByteArray,
+    ): DecodeResult =
+        when (node.tag) {
+            TRACK2_TAG -> track2(node, value)
+            else -> DecodeResult.Success(DecodedValue.RawBinary(value))
+        }
 
     /** `n`, which is digits unless the tag says the digits are a date or an amount. */
     private fun numeric(
@@ -190,6 +206,99 @@ public object ValueDecoder {
             // magnitude inside a Long and the conversion cannot overflow.
             is Digits.Read -> DecodeResult.Success(DecodedValue.Amount(read.digits.toLong()))
         }
+    }
+
+    /**
+     * Track 2 Equivalent Data (`57`): the PAN, the fields after it, and the `D` nibble between.
+     *
+     * The value is packed BCD, one digit per nibble, laid out as PAN, a `D` separator, expiry
+     * (`YYMM`), service code (three digits), discretionary data, then `F` padding to a whole octet.
+     * This walks it nibble by nibble, high before low, splitting on the single `D` and dropping the
+     * trailing `F` run.
+     *
+     * The month is checked `1..12`; nothing else about the expiry is, since the year has no century
+     * to test against — the same reading the scalar dates take. The PAN is bounded at nineteen
+     * digits and the fields after the separator must be at least seven, enough to hold the expiry
+     * and service code; the discretionary data is whatever digits are left.
+     *
+     * Every failure names an octet or a count and never a digit, because this is the one object
+     * that carries the PAN outright: an error that echoed a value octet would be two digits of a
+     * PAN in whatever log it reached. See [DecodeError].
+     */
+    private fun track2(
+        node: TlvNode,
+        value: ByteArray,
+    ): DecodeResult {
+        val pan = StringBuilder()
+        val rest = StringBuilder()
+        var sawSeparator = false
+        var padding = false
+        for (index in value.indices) {
+            val octet = value[index].toInt() and UNSIGNED_OCTET
+            for (shift in NIBBLE_SHIFTS) {
+                val nibble = (octet ushr shift) and LOW_NIBBLE
+                when {
+                    // A non-F nibble once padding has begun — a digit, or a stray D — is not
+                    // padding, so the F before it was not padding either.
+                    padding && nibble != PADDING_NIBBLE ->
+                        return DecodeResult.Failure(
+                            DecodeError.MisplacedPadding(node.tag, node.valueOffset + index),
+                        )
+                    nibble == PADDING_NIBBLE -> padding = true
+                    nibble == SEPARATOR_NIBBLE ->
+                        if (sawSeparator) {
+                            return DecodeResult.Failure(
+                                DecodeError.Track2MultipleSeparators(node.tag, node.valueOffset + index),
+                            )
+                        } else {
+                            sawSeparator = true
+                        }
+                    nibble > LARGEST_DIGIT ->
+                        return DecodeResult.Failure(
+                            DecodeError.NotBcd(node.tag, node.valueOffset + index),
+                        )
+                    sawSeparator -> rest.append('0' + nibble)
+                    else -> pan.append('0' + nibble)
+                }
+            }
+        }
+
+        if (!sawSeparator) {
+            return DecodeResult.Failure(DecodeError.Track2NoSeparator(node.tag, node.offset))
+        }
+        if (pan.length > MAX_PAN_DIGITS) {
+            return DecodeResult.Failure(
+                DecodeError.Track2PanTooLong(node.tag, node.offset, pan.length, MAX_PAN_DIGITS),
+            )
+        }
+        if (rest.length < TRACK2_FIXED_FIELD_DIGITS) {
+            return DecodeResult.Failure(
+                DecodeError.Track2MissingFields(node.tag, node.offset, rest.length, TRACK2_FIXED_FIELD_DIGITS),
+            )
+        }
+
+        val month = rest.substring(EXPIRY_MONTH_START, SERVICE_CODE_START).toInt()
+        if (month !in 1..MONTHS_IN_YEAR) {
+            // The month's first nibble sits at PAN digits + one separator + two year digits into
+            // the value; its octet may also hold the year digit before it, since the fields are
+            // nibble-granular. Offset only, never the month itself.
+            val monthNibble = pan.length + 1 + EXPIRY_MONTH_START
+            return DecodeResult.Failure(
+                DecodeError.Track2MonthOutOfRange(node.tag, node.valueOffset + monthNibble / NIBBLES_PER_OCTET),
+            )
+        }
+        return DecodeResult.Success(
+            DecodedValue.Track2(
+                pan = pan.toString(),
+                expiry =
+                    DecodedValue.Track2.Expiry(
+                        yearOfCentury = rest.substring(0, EXPIRY_MONTH_START).toInt(),
+                        month = month,
+                    ),
+                serviceCode = rest.substring(SERVICE_CODE_START, DISCRETIONARY_START),
+                discretionaryData = rest.substring(DISCRETIONARY_START),
+            ),
+        )
     }
 
     /**
@@ -327,6 +436,9 @@ public object ValueDecoder {
             TlvTag(value = 0x9F03, octetLength = 2),
         )
 
+    /** Track 2 Equivalent Data, the one `b` object this library reads the structure of. */
+    private val TRACK2_TAG: TlvTag = TlvTag(value = 0x57, octetLength = 1)
+
     /**
      * Longest each month can be, indexed from January. February is the common 28 here; the leap
      * year's extra day is [LEAP_FEBRUARY], granted by [longestMonth] to the endings that can earn
@@ -345,6 +457,20 @@ public object ValueDecoder {
 
     /** Twelve digits of `n 12`, two per octet. */
     private const val AMOUNT_OCTETS: Int = 6
+
+    /** The `D` nibble that separates the PAN from the fields after it in Track 2. */
+    private const val SEPARATOR_NIBBLE: Int = 0x0D
+
+    /** ISO/IEC 7813 caps the Track 2 PAN at nineteen digits. */
+    private const val MAX_PAN_DIGITS: Int = 19
+
+    /** The digits that must follow the Track 2 separator: four of expiry (`YYMM`), three of service. */
+    private const val TRACK2_FIXED_FIELD_DIGITS: Int = 7
+
+    /** Where each field starts in the run of digits after the Track 2 separator, in digits. */
+    private const val EXPIRY_MONTH_START: Int = 2
+    private const val SERVICE_CODE_START: Int = 4
+    private const val DISCRETIONARY_START: Int = 7
 
     /** Where the month and day sit in a `YYMMDD` value, in octets from its start. */
     private const val MONTH_OCTET: Int = 1
