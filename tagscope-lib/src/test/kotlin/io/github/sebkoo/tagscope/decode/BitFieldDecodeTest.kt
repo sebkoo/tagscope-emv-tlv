@@ -158,11 +158,12 @@ class BitFieldDecodeTest {
 
     @Test
     fun `CID names the payment-system-specific bits`() {
-        // 0x30 = b6 b5 set; the cryptogram type and reason code both read zero.
+        // 0x30 = b6 b5 set; the cryptogram type and reason code both read zero. Book 3 Table 15
+        // words this row "Payment System-specific cryptogram" verbatim.
         assertEquals(
             listOf(
-                SetFlag(0, 6, "Payment system-specific"),
-                SetFlag(0, 5, "Payment system-specific"),
+                SetFlag(0, 6, "Payment System-specific cryptogram"),
+                SetFlag(0, 5, "Payment System-specific cryptogram"),
             ),
             flagsOf("9F270130"),
         )

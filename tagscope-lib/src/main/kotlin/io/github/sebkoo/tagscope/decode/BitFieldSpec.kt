@@ -227,8 +227,8 @@ internal object BitFieldTable {
                 listOf(
                     // b6 b5 are payment-system-specific; b4 is the advice flag. b8 b7 and b3..b1 are
                     // the two enums below.
-                    BitRule(0, 6, "Payment system-specific"),
-                    BitRule(0, 5, "Payment system-specific"),
+                    BitRule(0, 6, "Payment System-specific cryptogram"),
+                    BitRule(0, 5, "Payment System-specific cryptogram"),
                     BitRule(0, 4, "Advice required"),
                 ),
             enums =
