@@ -11,9 +11,11 @@ what they mean.
 
 ## Status
 
-Work in progress. This commit is the build skeleton only — no parser yet. The tag readers,
-recursive-descent parser, tag dictionary, value decoders, test vectors and CLI land in
-subsequent commits.
+Work in progress. In place so far: the BER-TLV tag and length octet readers, a recursive-descent
+parser that turns a payload into a nested tag tree, a ~43-tag EMV dictionary that labels each tag,
+and scalar value decoders (`n`, `cn`, `an`, `ans`, dates and amounts). Still to come: Track 2, the
+bit-field decoders, the test vectors and the CLI. This README is itself a stub; a fuller one lands
+with them.
 
 ## Build
 
