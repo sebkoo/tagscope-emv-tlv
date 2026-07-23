@@ -1,5 +1,7 @@
 package io.github.sebkoo.tagscope.tlv
 
+import java.util.Collections
+
 /**
  * Parses a buffer of BER-TLV data into a tree of [TlvNode], by recursive descent.
  *
@@ -41,9 +43,18 @@ public object TlvParser {
      *
      * A buffer holding no data objects parses to an empty list rather than a failure. Any failure
      * stops the parse and is returned as it stands, discarding whatever was parsed before it.
+     *
+     * The returned list refuses mutation, like [TlvNode.children]: Kotlin's read-only `List` and
+     * `MutableList` are one JVM type, so without the wrapper a caller could cast the result back
+     * to `MutableList` and clear it. Wrapped here at the single public entry point, since every
+     * list below it is already wrapped by the [TlvNode] constructor.
      */
     public fun parse(source: ByteArray): TlvResult<List<TlvNode>> =
-        parseSequence(source, from = 0, end = source.size, depth = 1)
+        when (val result = parseSequence(source, from = 0, end = source.size, depth = 1)) {
+            is TlvResult.Failure -> result
+            is TlvResult.Success ->
+                TlvResult.Success(Collections.unmodifiableList(result.value.toList()))
+        }
 
     /**
      * Parses the data objects in `[from, end)` of [source], where [end] is the buffer size at the

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 class TlvParserTest {
     @Test
@@ -197,6 +198,21 @@ class TlvParserTest {
 
         assertEquals(TlvParser.MAX_DEPTH, nodes.walk().count())
         assertEquals("88", deepest.tag.hex)
+    }
+
+    @Test
+    fun `the returned sequence refuses mutation, as a node's children do`() {
+        // The primary public API. Without the wrapper, parse hands back a live mutableListOf, and
+        // List and MutableList are one JVM type, so a cast reaches it. Two nodes on purpose:
+        // toList() returns an immutable list of its own for nought or one element, so a shorter
+        // payload would refuse mutation even with the wrapper gone.
+        val nodes = TlvParser.parse(hex("9F3602000195050000000000")).expectSuccess()
+
+        val castBack = nodes as MutableList<TlvNode>
+
+        assertThrows<UnsupportedOperationException> { castBack.add(nodes[0]) }
+        assertThrows<UnsupportedOperationException> { castBack.clear() }
+        assertEquals(2, nodes.size)
     }
 
     @Test
