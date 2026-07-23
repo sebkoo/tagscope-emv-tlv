@@ -50,6 +50,11 @@ CI runs exactly `./gradlew ktlintCheck test build` on every push and pull reques
   wrong, say so explicitly and justify it byte by byte.
 - **Every bug becomes a regression vector.** Before fixing a defect, add the input that
   reproduces it to the vector suite.
+- **The dictionary's length bounds are advisory.** `TagInfo.minLength` and `maxLength` say what
+  EMV states a field normally holds. They are not a validation gate, and nothing may start
+  rejecting a data object for falling outside them: EMV states no minimum for a variable-length
+  field, and `6F 00` — an empty template — is well-formed BER-TLV that the parser accepts. The
+  parser decides what is well-formed; the dictionary only says what to expect.
 - **Only `00` is filler.** ISO/IEC 7816-4 §5.2.2.1 permits both `00` and `FF` octets without
   meaning before, between and after data objects; EMV Book 3, Annex B1 permits only `00`. This
   library parses EMV data, so the parser skips `00` at any object boundary and reports a stray
@@ -69,11 +74,18 @@ path that logs an unmasked PAN.
 
 ## Where the facts live
 
-- `tagscope-lib/src/main/resources/tags.json` — the tag dictionary: tag, name, class,
-  primitive or constructed, format. Adding a tag means editing this file, not the parser.
+- `tagscope-lib/src/main/kotlin/io/github/sebkoo/tagscope/tags/TagDictionary.kt` — the tag
+  dictionary: tag, name, format, length bounds, an optional note and a sensitive flag. Class and
+  constructed-ness are read off the identifier octets rather than stored beside them, so the
+  dictionary cannot contradict the wire. Adding a tag means editing this table, not the parser.
 - `tagscope-lib/src/main/resources/vectors/*.hex` — test vectors, with expected JSON alongside.
+  These arrive in a later commit, and the directory arrives with them; `resources/` is empty now.
 
-Both arrive in later commits; the directories exist now.
+The dictionary is a Kotlin table and not the `tags.json` this file first named. **The library has
+no runtime dependencies and is to keep none.** A JSON resource would cost either a JSON library or
+a hand-rolled reader with its own malformed-input tests, to parse data that is fixed at build time
+and checked by the compiler as it stands. Do not convert it to a resource file in order to add a
+tag.
 
 ## Build notes
 
@@ -133,7 +145,7 @@ Commits follow Conventional Commits and stay single-concern.
 - **FCI** — File Control Information, returned by SELECT.
 - **EMV Book 3** — EMVCo Integrated Circuit Card Specifications, Book 3 (Application
   Specification). Annex A is the Data Elements Dictionary (A1 by name, A2 by tag) and is the
-  reference for `tags.json`. Annex B gives the rules for BER-TLV data objects — the tag,
+  reference for the tag dictionary. Annex B gives the rules for BER-TLV data objects — the tag,
   length and value coding this parser implements.
 - **ISO/IEC 7816-4** — defines the BER-TLV encoding rules EMV builds on.
 
