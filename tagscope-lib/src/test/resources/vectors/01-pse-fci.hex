@@ -1,0 +1,4 @@
+# Vector 1 - PSE FCI (SELECT "1PAY.SYS.DDF01" response)
+# Published EMV / OpenSCDP payment-system directory sample. Synthetic; no live cardholder data.
+# 6F FCI > 84 DF Name "1PAY.SYS.DDF01" (ASCII) + A5 proprietary template > 88 SFI = 01.
+6F 15 84 0E 31 50 41 59 2E 53 59 53 2E 44 44 46 30 31 A5 03 88 01 01

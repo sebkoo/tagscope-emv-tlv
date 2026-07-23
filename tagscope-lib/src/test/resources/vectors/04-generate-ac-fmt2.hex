@@ -1,0 +1,6 @@
+# Vector 4 - GENERATE AC response, Format 2 (constructed 77 template)
+# Published EMV / OpenSCDP sample. Synthetic; no live cardholder data.
+# 77 > 9F27 CID = 00 (AAC / decline), 9F36 ATC = 0041, 9F26 AC (8 octets, opaque),
+# 9F10 IAD (18 octets, opaque). The AC and IAD are never interpreted by this library.
+77 29 9F 27 01 00 9F 36 02 00 41 9F 26 08 C7 4D 18 B0 82 48 FE FC 9F 10 12
+01 10 20 10 09 24 84 00 00 00 00 00 00 00 00 00 29 FF

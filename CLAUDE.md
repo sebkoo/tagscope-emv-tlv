@@ -44,7 +44,7 @@ CI runs exactly `./gradlew ktlintCheck test build` on every push and pull reques
 - **Pure functions.** Parsing and decoding take bytes and return values, with no I/O and no
   mutable shared state.
 - **No nullable public returns.** Absence is modelled in the result type, not as `null`.
-- **Fixtures are the oracle.** The test vectors in `tagscope-lib/src/main/resources/vectors/`
+- **Fixtures are the oracle.** The test vectors in `tagscope-lib/src/test/resources/vectors/`
   are hand-verified against the raw bytes. When a test fails, the code is wrong. Never edit a
   fixture or an expected value to make a test pass. If you believe a fixture is genuinely
   wrong, say so explicitly and justify it byte by byte.
@@ -78,8 +78,11 @@ path that logs an unmasked PAN.
   dictionary: tag, name, format, length bounds, an optional note and a sensitive flag. Class and
   constructed-ness are read off the identifier octets rather than stored beside them, so the
   dictionary cannot contradict the wire. Adding a tag means editing this table, not the parser.
-- `tagscope-lib/src/main/resources/vectors/*.hex` — test vectors, with expected JSON alongside.
-  These arrive in a later commit, and the directory arrives with them; `resources/` is empty now.
+- `tagscope-lib/src/test/resources/vectors/*.hex` — golden test vectors, one hex data object per
+  file with a `#` provenance header. They are test-only: no runtime code reads them and no public
+  API exposes them, so they stay out of `src/main` and out of the published JAR. The expected
+  trees and decoded values live beside them in the typed `GoldenVectors` Kotlin table (same test
+  package), compiler-checked against the decoder API rather than parsed from a JSON sidecar.
 
 The dictionary is a Kotlin table and not the `tags.json` this file first named. **The library has
 no runtime dependencies and is to keep none.** A JSON resource would cost either a JSON library or

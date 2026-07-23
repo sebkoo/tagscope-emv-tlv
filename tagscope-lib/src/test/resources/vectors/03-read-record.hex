@@ -1,0 +1,14 @@
+# Vector 3 - READ RECORD response, long-form length (81 8C = 140 octets)
+# Published EMV / OpenSCDP sample. Synthetic; no live cardholder data.
+# The bytes are the oracle: some published summaries of this record cite a different PAN/expiry.
+#   5A  PAN     = 5570295626678085  (masked by default; full value only under reveal())
+#   5F24 expiry = 20 11 30          (2020-11-30)
+#   5F25 effect = 16 03 01          (2016-03-01)
+#   5F28 country/9F42 currency = 0643
+#   8C CDOL1, 8D CDOL2 (DOLs, opaque here), 8E CVM List, 9F0D/0E/0F IACs (TVR-shaped bit fields).
+#   9F4A SDA Tag List is not yet in the dictionary -> resolves Unknown.
+70 81 8C 9F 42 02 06 43 5F 25 03 16 03 01 5F 24 03 20 11 30 5A 08 55 70 29 56 26 67 80 85
+5F 34 01 02 9F 07 02 FF 00 8C 21 9F 02 06 9F 03 06 9F 1A 02 95 05 5F 2A 02 9A 03 9C 01
+9F 37 04 9F 35 01 9F 45 02 9F 4C 08 9F 34 03 8D 0C 91 0A 8A 02 95 05 9F 37 04 9F 4C 08
+8E 14 00 00 00 00 00 00 00 00 42 01 44 03 41 03 42 03 1E 03 1F 03 9F 0D 05 BC 50 BC 88 00
+9F 0E 05 00 00 08 00 00 9F 0F 05 BC 70 BC 98 00 5F 28 02 06 43 9F 4A 01 82

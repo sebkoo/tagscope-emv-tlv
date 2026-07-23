@@ -1,0 +1,6 @@
+# Vector 2 - Visa AID FCI with PDOL (SELECT A0000000031010 response)
+# Published EMV / OpenSCDP sample. Synthetic; no live cardholder data.
+# 6F > 84 AID A0000000031010 + A5 > 50 "VISA", 87 priority 01, 9F38 PDOL, 5F2D language "de".
+# The 9F38 value is itself a DOL of four entries: (9F33,3)(9F1A,2)(9F35,1)(9F40,5).
+6F 28 84 07 A0 00 00 00 03 10 10 A5 1D 50 04 56 49 53 41 87 01 01 9F 38 0C
+9F 33 03 9F 1A 02 9F 35 01 9F 40 05 5F 2D 02 64 65

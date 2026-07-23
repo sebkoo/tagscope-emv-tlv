@@ -1,0 +1,5 @@
+# Vector 5 - GET PROCESSING OPTIONS response, Format 1 (primitive 80)
+# Published EMV / OpenSCDP sample. Synthetic; no live cardholder data.
+# 80 is PRIMITIVE (bit 6 clear): six opaque octets, no recursion. By GPO Format 1 convention the
+# value is AIP 1C00 + AFL 08010100 - the identical payload Vector 6 carries as self-describing TLV.
+80 06 1C 00 08 01 01 00

@@ -1,0 +1,5 @@
+# Vector 6 - GET PROCESSING OPTIONS response, Format 2 (constructed 77)
+# Published EMV / OpenSCDP sample. Synthetic; no live cardholder data.
+# 77 is CONSTRUCTED (bit 6 set): 82 AIP 1C00 + 94 AFL 08010100 as self-describing TLV. Same payload
+# as Vector 5 - the 80-vs-77 contrast is the point: bit 6 alone decides whether the parser recurses.
+77 0A 82 02 1C 00 94 04 08 01 01 00
