@@ -8,9 +8,10 @@ import io.github.sebkoo.tagscope.tlv.TlvTag
 /**
  * Reads one data object's value octets according to the format EMV states for its tag.
  *
- * Scalars, Track 2 (`57`), and the bit fields (AIP, TVR and the Issuer Action Codes, AUC). Every
- * other `b` and primitive `var.` is handed back as octets, and reading the structure inside `94` is
- * a later step; a cryptogram is handed back as octets permanently, by the scope this project keeps.
+ * Scalars, Track 2 (`57`), and the bit fields (AIP, TVR and the Issuer Action Codes, AUC, CID and
+ * CVM Results). Every other `b` and primitive `var.` is handed back as octets, and reading the
+ * structure inside `94` is a later step; a cryptogram is handed back as octets permanently, by the
+ * scope this project keeps.
  *
  * The rules it applies:
  *
@@ -109,10 +110,12 @@ public object ValueDecoder {
      * amount is. It is [DecodeError.UnexpectedValueLength], carrying the object's own offset, and it
      * may carry the lengths because no bit-field tag is cardholder data.
      *
-     * Then each named bit that is set becomes a [DecodedValue.BitField.SetFlag], and any set bit no
-     * rule named is surfaced as `"RFU"` rather than dropped — a bit set where the spec reserves one
-     * is the anomaly the tool exists to show. The flags come out in wire order, the most significant
-     * bit of the lowest octet first, so they read as the spec's tables do.
+     * Then each named bit that is set becomes a [DecodedValue.BitField.SetFlag], each enum field
+     * becomes a [DecodedValue.BitField.EnumSelection] carrying the value it chose, and any set bit
+     * no rule named is surfaced as `"RFU"` rather than dropped — a bit set where the spec reserves
+     * one is the anomaly the tool exists to show. The flags come out in wire order, the most
+     * significant bit of the lowest octet first, so they read as the spec's tables do; the
+     * selections come out in the order the spec lists the fields.
      */
     private fun bitField(
         node: TlvNode,
@@ -125,6 +128,7 @@ public object ValueDecoder {
             )
         }
         val flags = mutableListOf<DecodedValue.BitField.SetFlag>()
+        val selections = mutableListOf<DecodedValue.BitField.EnumSelection>()
         val named = IntArray(value.size)
         for (rule in spec.bits) {
             val mask = 1 shl (rule.bit - 1)
@@ -132,6 +136,18 @@ public object ValueDecoder {
             if (value[rule.byteIndex].toInt() and mask != 0) {
                 flags += DecodedValue.BitField.SetFlag(rule.byteIndex, rule.bit, rule.meaning)
             }
+        }
+        for (rule in spec.enums) {
+            named[rule.byteIndex] = named[rule.byteIndex] or rule.mask
+            val octet = value[rule.byteIndex].toInt() and UNSIGNED_OCTET
+            val selected = (octet and rule.mask) ushr Integer.numberOfTrailingZeros(rule.mask)
+            selections +=
+                DecodedValue.BitField.EnumSelection(
+                    rule.byteIndex,
+                    rule.label,
+                    selected,
+                    rule.meanings[selected] ?: RFU,
+                )
         }
         for (index in value.indices) {
             val unnamed = value[index].toInt() and UNSIGNED_OCTET and named[index].inv()
@@ -142,7 +158,7 @@ public object ValueDecoder {
             }
         }
         flags.sortWith(compareBy<DecodedValue.BitField.SetFlag> { it.byteIndex }.thenByDescending { it.bit })
-        return DecodeResult.Success(DecodedValue.BitField(value, flags))
+        return DecodeResult.Success(DecodedValue.BitField(value, flags, selections))
     }
 
     /** `n`, which is digits unless the tag says the digits are a date or an amount. */

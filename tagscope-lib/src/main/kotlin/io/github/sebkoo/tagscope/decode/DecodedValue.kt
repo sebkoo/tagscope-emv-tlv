@@ -190,16 +190,21 @@ public sealed interface DecodedValue {
     }
 
     /**
-     * A bit field: value octets that are a row of flags, decoded into the meaning EMV states for
-     * each bit that is set.
+     * A bit field: value octets read against the meaning EMV fixes for each bit position.
      *
      * The Application Interchange Profile (`82`), the Terminal Verification Results (`95`) and the
      * Issuer Action Codes (`9F0D`/`9F0E`/`9F0F`, which share the TVR's layout), and the Application
-     * Usage Control (`9F07`): each octet a row of eight flags whose meaning is fixed by position,
-     * not by value. [flags] lists the bits that were set, each with the meaning Book 3 states for
-     * its position; a set bit no meaning names — a bit reserved for a future version, or one the
-     * table does not yet carry — is surfaced as `"RFU"` rather than dropped, since a bit set where
-     * the spec reserves one is the anomaly an inspection tool is looking for.
+     * Usage Control (`9F07`) are rows of single-bit flags. The Cryptogram Information Data (`9F27`)
+     * and the CVM Results (`9F34`) mix flags with small enums — a group of bits read together, like
+     * the CID's cryptogram type. So two lists: [flags] for the bits that were set, and [selections]
+     * for the multi-bit fields and the value each chose.
+     *
+     * [flags] carries each set bit with the meaning Book 3 states for its position; a set bit no
+     * meaning names — reserved for a future version, or not yet in the table — is surfaced as
+     * `"RFU"` rather than dropped, since a bit set where the spec reserves one is the anomaly an
+     * inspection tool is looking for. [selections] carries each enum field's chosen [EnumSelection],
+     * whose meaning is the name EMV gives that value, or `"RFU"` for a value the spec does not
+     * define.
      *
      * None of these tags is cardholder data, so — unlike [RawBinary] and [Track2] — [toString]
      * prints the meanings, which are the point of decoding a bit field at all. Not a data class for
@@ -208,17 +213,25 @@ public sealed interface DecodedValue {
      * the interpretation, because `82` and `9F07` are each two octets and identical bytes under
      * different tags decode to different flags.
      *
-     * EMV Book 3 v4.4, Annex C: C1 (AIP `82`), C2 (AUC `9F07`), C5 (TVR `95`, and the Issuer Action
-     * Codes that share its layout).
+     * EMV Book 3 v4.4, Annex C (C1 AIP, C2 AUC, C5 TVR) and Table 15 (CID); CVM Results is Book 4
+     * v4.4, Annex A4, with its method and condition codes from Book 3 Annex C3.
      */
     public class BitField(
         bytes: ByteArray,
         flags: List<SetFlag>,
+        selections: List<EnumSelection>,
     ) : DecodedValue {
         private val octets: ByteArray = bytes.copyOf()
 
         /** The bits that were set, each with the meaning EMV gives its position, in wire order. */
         public val flags: List<SetFlag> = Collections.unmodifiableList(flags.toList())
+
+        /**
+         * The multi-bit fields and the value each selected: a CID's cryptogram type and
+         * reason/advice code, a CVM Results method, condition and result. Empty for a tag that is
+         * pure flags, and in the order the spec lists the fields.
+         */
+        public val selections: List<EnumSelection> = Collections.unmodifiableList(selections.toList())
 
         /** The value octets, exactly as they appear on the wire. A fresh copy on every call. */
         public fun bytes(): ByteArray = octets.copyOf()
@@ -230,17 +243,23 @@ public sealed interface DecodedValue {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (other !is BitField) return false
-            return octets.contentEquals(other.octets) && flags == other.flags
+            return octets.contentEquals(other.octets) &&
+                flags == other.flags &&
+                selections == other.selections
         }
 
         override fun hashCode(): Int {
             var result = octets.contentHashCode()
             result = HASH_FACTOR * result + flags.hashCode()
+            result = HASH_FACTOR * result + selections.hashCode()
             return result
         }
 
         /** The meanings, not a count: this is not cardholder data, and the meanings are the point. */
-        override fun toString(): String = "BitField(${flags.joinToString { it.meaning }})"
+        override fun toString(): String {
+            val parts = selections.map { "${it.label}=${it.meaning}" } + flags.map { it.meaning }
+            return "BitField(${parts.joinToString()})"
+        }
 
         /**
          * One set bit and what EMV says it means.
@@ -257,7 +276,44 @@ public sealed interface DecodedValue {
             public val meaning: String,
         )
 
-        private companion object {
+        /**
+         * One multi-bit field and the value it selected.
+         *
+         * Where a [SetFlag] is a single bit that is on, a selection is a group of bits read together
+         * as a small enum: the CID cryptogram type (`b8 b7`), its reason/advice code (`b3 b2 b1`),
+         * or a CVM Results method, condition or result.
+         *
+         * @property byteIndex which octet of the value, from zero.
+         * @property label what the field is, e.g. `"Cryptogram type"`.
+         * @property value the selected bits, shifted down so the field reads from zero.
+         * @property meaning what EMV calls that value, or `"RFU"` for one the spec does not define.
+         */
+        public data class EnumSelection(
+            public val byteIndex: Int,
+            public val label: String,
+            public val value: Int,
+            public val meaning: String,
+        )
+
+        /**
+         * The cryptogram a card returned, from the top two bits of the CID (`9F27`).
+         *
+         * The canonical value set behind the [EnumSelection] labelled [CRYPTOGRAM_TYPE_LABEL]: its
+         * constant names are that selection's meanings and its ordinals are that selection's
+         * [EnumSelection.value], so a caller recovers the typed value with
+         * `CryptogramType.entries[selection.value]`. No `AAR`: EMV 4.4 codes `b8 b7` of `11` as RFU.
+         */
+        public enum class CryptogramType {
+            AAC,
+            TC,
+            ARQC,
+            RFU,
+        }
+
+        public companion object {
+            /** The [EnumSelection.label] the CID cryptogram type is carried under; see [CryptogramType]. */
+            public const val CRYPTOGRAM_TYPE_LABEL: String = "Cryptogram type"
+
             private const val HASH_FACTOR: Int = 31
         }
     }

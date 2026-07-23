@@ -11,28 +11,33 @@ import io.github.sebkoo.tagscope.tlv.TlvTag
  * resolved to their meanings — and never this layout, the same way `BerBits` stays internal to the
  * parser.
  *
- * A spec lists only the bit positions that carry a meaning worth naming. A plain "RFU" position is
- * left out and synthesised by `ValueDecoder` when it is actually set, so nothing set is dropped and
- * the tables stay to the meanings EMV actually spells. A position Book 3 reserves with wording more
- * specific than "RFU" — "Reserved for use by the EMV Contactless Specifications" — is listed, so a
- * set reserved bit reports which kind of reserved it is.
+ * A spec lists the single-bit flags and the multi-bit enum fields that carry a meaning worth
+ * naming. A plain "RFU" bit is left out and synthesised by `ValueDecoder` when it is actually set,
+ * so nothing set is dropped and the tables stay to the meanings EMV actually spells; an enum value
+ * the spec does not define is reported "RFU" the same way. A position Book 3 reserves with wording
+ * more specific than "RFU" — "Reserved for use by the EMV Contactless Specifications" — is listed,
+ * so a set reserved bit reports which kind of reserved it is.
  *
- * Every meaning is transcribed from EMV Book 3 v4.4 (October 2022), Annex C, at the table cited
- * beside each spec in [BitFieldTable].
+ * Every meaning is transcribed from EMV Book 3 v4.4 (October 2022), Annex C and Table 15, at the
+ * table cited beside each spec in [BitFieldTable]; the CVM Results (`9F34`) draws its byte-3 result
+ * codes from EMV Book 4 v4.4, Annex A4.
  *
  * @property octetLength how many octets the field is; a value of any other length has nothing to
  *   read against this table and fails with `DecodeError.UnexpectedValueLength`.
- * @property bits the named bit positions, in any order.
+ * @property bits the named single-bit flags, in any order.
+ * @property enums the multi-bit fields, in the order they should be reported.
  */
 internal class BitFieldSpec(
     val octetLength: Int,
     val bits: List<BitRule>,
+    val enums: List<EnumRule> = emptyList(),
 ) {
     init {
         // Static-data preconditions, the discipline TagInfo and TagDictionary keep in their own
         // init blocks: a mistake in the table is caught when the object loads, long before a value
-        // is decoded against it.
-        val seen = HashSet<Int>(bits.size)
+        // is decoded against it. A single `claimed` bitmap per octet catches both a bit named twice
+        // and a bit that is at once a flag and part of an enum's mask.
+        val claimed = IntArray(octetLength)
         for (rule in bits) {
             require(rule.byteIndex in 0 until octetLength) {
                 "a bit rule names byte ${rule.byteIndex}, outside 0 until $octetLength"
@@ -40,14 +45,29 @@ internal class BitFieldSpec(
             require(rule.bit in 1..BITS_PER_OCTET) {
                 "a bit rule names bit ${rule.bit}, outside 1..$BITS_PER_OCTET"
             }
-            require(seen.add(rule.byteIndex * BITS_PER_OCTET + rule.bit)) {
-                "bit ${rule.bit} of byte ${rule.byteIndex} is named twice"
+            val mask = 1 shl (rule.bit - 1)
+            require(claimed[rule.byteIndex] and mask == 0) {
+                "bit ${rule.bit} of byte ${rule.byteIndex} is claimed twice"
             }
+            claimed[rule.byteIndex] = claimed[rule.byteIndex] or mask
+        }
+        for (rule in enums) {
+            require(rule.byteIndex in 0 until octetLength) {
+                "an enum rule names byte ${rule.byteIndex}, outside 0 until $octetLength"
+            }
+            require(rule.mask in 1..OCTET_MASK) {
+                "the ${rule.label} mask ${rule.mask} is outside 1..$OCTET_MASK"
+            }
+            require(claimed[rule.byteIndex] and rule.mask == 0) {
+                "the ${rule.label} mask overlaps a bit already claimed on byte ${rule.byteIndex}"
+            }
+            claimed[rule.byteIndex] = claimed[rule.byteIndex] or rule.mask
         }
     }
 
     private companion object {
         private const val BITS_PER_OCTET: Int = 8
+        private const val OCTET_MASK: Int = 0xFF
     }
 }
 
@@ -62,6 +82,22 @@ internal data class BitRule(
     val byteIndex: Int,
     val bit: Int,
     val meaning: String,
+)
+
+/**
+ * One multi-bit field and the value each of its settings means.
+ *
+ * @property byteIndex which octet of the value, from zero.
+ * @property label what the field is, e.g. `"Cryptogram type"`.
+ * @property mask the bits the field occupies, e.g. `0xC0` for `b8 b7`.
+ * @property meanings the meaning of each value the field can take, keyed by the masked bits shifted
+ *   down to read from zero. A value absent from the map is reported as `"RFU"`.
+ */
+internal data class EnumRule(
+    val byteIndex: Int,
+    val label: String,
+    val mask: Int,
+    val meanings: Map<Int, String>,
 )
 
 /**
@@ -180,6 +216,116 @@ internal object BitFieldTable {
                 ),
         )
 
+    /**
+     * Cryptogram Information Data (`9F27`), a cryptogram type and reason code with two flags between.
+     * Book 3 v4.4, Table 15 (§6.5.5.4).
+     */
+    private val CID: BitFieldSpec =
+        BitFieldSpec(
+            octetLength = 1,
+            bits =
+                listOf(
+                    // b6 b5 are payment-system-specific; b4 is the advice flag. b8 b7 and b3..b1 are
+                    // the two enums below.
+                    BitRule(0, 6, "Payment system-specific"),
+                    BitRule(0, 5, "Payment system-specific"),
+                    BitRule(0, 4, "Advice required"),
+                ),
+            enums =
+                listOf(
+                    EnumRule(
+                        0,
+                        DecodedValue.BitField.CRYPTOGRAM_TYPE_LABEL,
+                        0xC0,
+                        mapOf(
+                            0 to DecodedValue.BitField.CryptogramType.AAC.name,
+                            1 to DecodedValue.BitField.CryptogramType.TC.name,
+                            2 to DecodedValue.BitField.CryptogramType.ARQC.name,
+                            3 to DecodedValue.BitField.CryptogramType.RFU.name,
+                        ),
+                    ),
+                    EnumRule(
+                        0,
+                        "Reason/advice code",
+                        0x07,
+                        mapOf(
+                            0 to "No information given",
+                            1 to "Service not allowed",
+                            2 to "PIN Try Limit exceeded",
+                            3 to "Issuer authentication failed",
+                        ),
+                    ),
+                ),
+        )
+
+    /**
+     * The CVM Code, byte 1 of the CVM Results. Book 3 v4.4, Annex C3, Table 43, keyed by `b6..b1`;
+     * `3F` is Book 4 v4.4 Annex A4's "No CVM performed", which overrides Table 43's "not available".
+     */
+    private val CVM_METHODS: Map<Int, String> =
+        mapOf(
+            0x00 to "Fail CVM processing",
+            0x01 to "Plaintext PIN verification performed by ICC",
+            0x02 to "Enciphered PIN verified online",
+            0x03 to "Plaintext PIN verification performed by ICC and signature",
+            0x04 to "Enciphered PIN verification performed by ICC",
+            0x05 to "Enciphered PIN verification performed by ICC and signature",
+            0x06 to "Facial biometric verified offline (by ICC)",
+            0x07 to "Facial biometric verified online",
+            0x08 to "Finger biometric verified offline (by ICC)",
+            0x09 to "Finger biometric verified online",
+            0x0A to "Palm biometric verified offline (by ICC)",
+            0x0B to "Palm biometric verified online",
+            0x0C to "Iris biometric verified offline (by ICC)",
+            0x0D to "Iris biometric verified online",
+            0x0E to "Voice biometric verified offline (by ICC)",
+            0x0F to "Voice biometric verified online",
+            0x1E to "Signature",
+            0x1F to "No CVM required",
+            0x3F to "No CVM performed",
+        ) +
+            (0x10..0x1D).associateWith { "RFU (reserved for future use by this specification)" } +
+            (0x20..0x2F).associateWith { "Reserved for use by the individual payment systems" } +
+            (0x30..0x3E).associateWith { "Reserved for use by the issuer" }
+
+    /** The CVM Condition Code, byte 2 of the CVM Results. Book 3 v4.4, Annex C3, Table 44. */
+    private val CVM_CONDITIONS: Map<Int, String> =
+        mapOf(
+            0x00 to "Always",
+            0x01 to "If unattended cash",
+            0x02 to "If not unattended cash and not manual cash and not purchase with cashback",
+            0x03 to "If terminal supports the CVM",
+            0x04 to "If manual cash",
+            0x05 to "If purchase with cashback",
+            0x06 to "If transaction is in the application currency and is under X value",
+            0x07 to "If transaction is in the application currency and is over X value",
+            0x08 to "If transaction is in the application currency and is under Y value",
+            0x09 to "If transaction is in the application currency and is over Y value",
+        ) +
+            (0x0A..0x7F).associateWith { "RFU" } +
+            (0x80..0xFF).associateWith { "Reserved for use by individual payment systems" }
+
+    /**
+     * CVM Results (`9F34`), three enum lanes: the CVM performed, the condition it was performed
+     * under, and the result. Book 4 v4.4, Annex A4 (Table 33); the byte 1 method and byte 2
+     * condition are Book 3's, the byte 3 result is Book 4's. Byte 1 `b7` is the CV Rule's own
+     * "apply succeeding rule" bit, reported only when set; `b8` is RFU.
+     */
+    private val CVM: BitFieldSpec =
+        BitFieldSpec(
+            octetLength = 3,
+            bits =
+                listOf(
+                    BitRule(0, 7, "Apply succeeding CV Rule if this CVM is unsuccessful"),
+                ),
+            enums =
+                listOf(
+                    EnumRule(0, "CVM performed", 0x3F, CVM_METHODS),
+                    EnumRule(1, "CVM condition", 0xFF, CVM_CONDITIONS),
+                    EnumRule(2, "CVM result", 0xFF, mapOf(0 to "Unknown", 1 to "Failed", 2 to "Successful")),
+                ),
+        )
+
     private val SPECS: Map<TlvTag, BitFieldSpec> =
         mapOf(
             TlvTag(value = 0x82, octetLength = 1) to AIP,
@@ -188,5 +334,7 @@ internal object BitFieldTable {
             TlvTag(value = 0x9F0D, octetLength = 2) to TVR,
             TlvTag(value = 0x9F0E, octetLength = 2) to TVR,
             TlvTag(value = 0x9F0F, octetLength = 2) to TVR,
+            TlvTag(value = 0x9F27, octetLength = 2) to CID,
+            TlvTag(value = 0x9F34, octetLength = 2) to CVM,
         )
 }

@@ -1,6 +1,8 @@
 package io.github.sebkoo.tagscope.decode
 
 import io.github.sebkoo.tagscope.decode.DecodedValue.BitField
+import io.github.sebkoo.tagscope.decode.DecodedValue.BitField.CryptogramType
+import io.github.sebkoo.tagscope.decode.DecodedValue.BitField.EnumSelection
 import io.github.sebkoo.tagscope.decode.DecodedValue.BitField.SetFlag
 import io.github.sebkoo.tagscope.decode.DecodedValue.Sensitive
 import io.github.sebkoo.tagscope.tags.TagDictionary
@@ -12,16 +14,20 @@ import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 
 /**
- * The bit-field flag tags: the Application Interchange Profile (`82`), the Application Usage Control
- * (`9F07`), the Terminal Verification Results (`95`), and the three Issuer Action Codes
- * (`9F0D`/`9F0E`/`9F0F`) that share the TVR's layout.
+ * The bit-field tags: the flag tags — the Application Interchange Profile (`82`), the Application
+ * Usage Control (`9F07`), the Terminal Verification Results (`95`), and the three Issuer Action
+ * Codes (`9F0D`/`9F0E`/`9F0F`) that share the TVR's layout — and the enum-bearing tags, the
+ * Cryptogram Information Data (`9F27`) and the CVM Results (`9F34`).
  *
- * Every expected meaning is transcribed from EMV Book 3 v4.4 (October 2022), Annex C: Table 41
- * (AIP, C1), Table 42 (AUC, C2) and Table 46 (TVR, C5). The example bytes are hand-written to set
- * named bits; none of it is card data.
+ * Every expected meaning is transcribed from EMV Book 3 v4.4 (October 2022): Annex C Table 41 (AIP),
+ * Table 42 (AUC), Table 46 (TVR), Table 43 (CVM codes), Table 44 (CVM conditions), and Table 15
+ * (CID); the CVM Results byte-3 result codes are from EMV Book 4 v4.4, Annex A4. The example bytes
+ * are hand-written to set named bits; none of it is card data.
  */
 class BitFieldDecodeTest {
     private fun flagsOf(text: String): List<SetFlag> = (decode(text).expectValue() as BitField).flags
+
+    private fun selectionsOf(text: String): List<EnumSelection> = (decode(text).expectValue() as BitField).selections
 
     @Test
     fun `AIP names the byte-1 capability bits that are set`() {
@@ -125,6 +131,113 @@ class BitFieldDecodeTest {
         assertFalse(decode("82020000").expectValue() is Sensitive, "a bit field is not cardholder data")
     }
 
+    private fun cryptogramTypeOf(text: String): EnumSelection =
+        selectionsOf(text).first { it.label == BitField.CRYPTOGRAM_TYPE_LABEL }
+
+    @Test
+    fun `CID reads the cryptogram type from the top two bits`() {
+        assertEquals(EnumSelection(0, "Cryptogram type", 0, "AAC"), cryptogramTypeOf("9F270100"))
+        assertEquals(EnumSelection(0, "Cryptogram type", 1, "TC"), cryptogramTypeOf("9F270140"))
+        assertEquals(EnumSelection(0, "Cryptogram type", 2, "ARQC"), cryptogramTypeOf("9F270180"))
+        // b8 b7 = 11 is RFU in EMV 4.4, not AAR.
+        assertEquals(EnumSelection(0, "Cryptogram type", 3, "RFU"), cryptogramTypeOf("9F2701C0"))
+    }
+
+    @Test
+    fun `CID reports the advice flag, cryptogram type and reason code together`() {
+        // 0x8B = ARQC (b8 b7 = 10), advice required (b4), reason 011 = issuer authentication failed.
+        assertEquals(listOf(SetFlag(0, 4, "Advice required")), flagsOf("9F27018B"))
+        assertEquals(
+            listOf(
+                EnumSelection(0, "Cryptogram type", 2, "ARQC"),
+                EnumSelection(0, "Reason/advice code", 3, "Issuer authentication failed"),
+            ),
+            selectionsOf("9F27018B"),
+        )
+    }
+
+    @Test
+    fun `CID names the payment-system-specific bits`() {
+        // 0x30 = b6 b5 set; the cryptogram type and reason code both read zero.
+        assertEquals(
+            listOf(
+                SetFlag(0, 6, "Payment system-specific"),
+                SetFlag(0, 5, "Payment system-specific"),
+            ),
+            flagsOf("9F270130"),
+        )
+    }
+
+    @Test
+    fun `the CID cryptogram type maps onto the CryptogramType enum`() {
+        val selection = cryptogramTypeOf("9F270180")
+        assertEquals(CryptogramType.ARQC.name, selection.meaning)
+        assertEquals(CryptogramType.ARQC, CryptogramType.entries[selection.value])
+    }
+
+    @Test
+    fun `a CID reason code the spec does not define is RFU`() {
+        // b3 b2 b1 = 111; only 000..011 are defined.
+        assertEquals(
+            EnumSelection(0, "Reason/advice code", 7, "RFU"),
+            selectionsOf("9F270107").first { it.label == "Reason/advice code" },
+        )
+    }
+
+    @Test
+    fun `CVM Results decodes the method, condition and result lanes`() {
+        // 1F 00 02: No CVM required, condition Always, result Successful.
+        assertEquals(
+            listOf(
+                EnumSelection(0, "CVM performed", 0x1F, "No CVM required"),
+                EnumSelection(1, "CVM condition", 0x00, "Always"),
+                EnumSelection(2, "CVM result", 0x02, "Successful"),
+            ),
+            selectionsOf("9F34031F0002"),
+        )
+        assertEquals(emptyList<SetFlag>(), flagsOf("9F34031F0002"))
+    }
+
+    @Test
+    fun `CVM Results reports byte 1 bit 7 as the apply-succeeding-rule flag`() {
+        // 44 03 01: b7 set (apply succeeding rule), method 04 (enciphered PIN by ICC), condition 03,
+        // result Failed.
+        assertEquals(
+            listOf(SetFlag(0, 7, "Apply succeeding CV Rule if this CVM is unsuccessful")),
+            flagsOf("9F3403440301"),
+        )
+        assertEquals(
+            listOf(
+                EnumSelection(0, "CVM performed", 0x04, "Enciphered PIN verification performed by ICC"),
+                EnumSelection(1, "CVM condition", 0x03, "If terminal supports the CVM"),
+                EnumSelection(2, "CVM result", 0x01, "Failed"),
+            ),
+            selectionsOf("9F3403440301"),
+        )
+    }
+
+    @Test
+    fun `CVM Results byte 1 of 3F is Book 4's No CVM performed`() {
+        assertEquals(
+            EnumSelection(0, "CVM performed", 0x3F, "No CVM performed"),
+            selectionsOf("9F34033F0000").first { it.label == "CVM performed" },
+        )
+    }
+
+    @Test
+    fun `a CVM result the spec does not define is RFU`() {
+        assertEquals(
+            EnumSelection(2, "CVM result", 0x03, "RFU"),
+            selectionsOf("9F3403000003").first { it.label == "CVM result" },
+        )
+    }
+
+    @Test
+    fun `a CVM byte 1 reserved bit 8 is surfaced as RFU`() {
+        // 80 00 00: b8 of byte 1 is RFU; the method reads 0 (Fail CVM processing).
+        assertEquals(listOf(SetFlag(0, 8, "RFU")), flagsOf("9F3403800000"))
+    }
+
     @Test
     fun `a bit field of the wrong length has nothing to read against the table`() {
         assertEquals(
@@ -138,6 +251,14 @@ class BitFieldDecodeTest {
         assertEquals(
             DecodeError.UnexpectedValueLength(node("9F0703000000").tag, 0, 2, 3),
             decode("9F0703000000").expectError(),
+        )
+        assertEquals(
+            DecodeError.UnexpectedValueLength(node("9F27020000").tag, 0, 1, 2),
+            decode("9F27020000").expectError(),
+        )
+        assertEquals(
+            DecodeError.UnexpectedValueLength(node("9F34020000").tag, 0, 3, 2),
+            decode("9F34020000").expectError(),
         )
     }
 
@@ -186,7 +307,7 @@ class BitFieldDecodeTest {
         // Two invariants the error design leans on. First: none of these tags is cardholder data,
         // so UnexpectedValueLength may carry the lengths. Second: the spec's width is the fixed
         // width the dictionary states, so the length check and the dictionary cannot disagree.
-        for (hex in listOf("82", "9F07", "95", "9F0D", "9F0E", "9F0F")) {
+        for (hex in listOf("82", "9F07", "95", "9F0D", "9F0E", "9F0F", "9F27", "9F34")) {
             val info = TagDictionary.entries.first { it.tag.hex == hex }
             assertFalse(info.isSensitive, "$hex must be non-sensitive")
 
