@@ -345,7 +345,7 @@ Gradle (Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("io.github.sebkoo:tagscope:0.1.0")
+    implementation("io.github.sebkoo:tagscope:0.2.0")
 }
 ```
 
@@ -355,7 +355,7 @@ Maven:
 <dependency>
   <groupId>io.github.sebkoo</groupId>
   <artifactId>tagscope</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
 </dependency>
 ```
 

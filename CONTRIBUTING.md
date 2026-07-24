@@ -57,3 +57,14 @@ The exact process used for a release (maintainers):
 > **Credentials never live in the repo.** `mavenCentralUsername` / `mavenCentralPassword` and the
 > signing key and passphrase belong only in `~/.gradle/gradle.properties` or environment
 > variables.
+
+> **GPG signing from a non-interactive shell.** If `publishToMavenCentral` fails at
+> `signMavenPublication` with `Could not read PGP secret key`, and the `gpg --export-secret-keys`
+> output shows `no pinentry` or `error receiving key from agent: Inappropriate ioctl for device`,
+> gpg-agent has no terminal to prompt for the key passphrase. Run the publish from a real terminal
+> (Terminal.app / iTerm, not an editor's task runner or an agent shell) and set the terminal for
+> the agent first:
+> ```bash
+> export GPG_TTY=$(tty)
+> ```
+> Then run the publish command in that same terminal so pinentry can prompt.
