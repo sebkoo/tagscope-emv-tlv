@@ -141,7 +141,7 @@ internal val VECTORS: List<GoldenVector> =
         ),
         // 3 - READ RECORD, long-form length 81 8C. PAN masked by default; dates keep a two-digit
         // year; the DOLs 8C/8D decode to their (tag, length) entries and the CVM List 8E to its
-        // amounts and CV Rules; the IACs are TVR-shaped bit fields; 9F4A Unknown.
+        // amounts and CV Rules; the IACs are TVR-shaped bit fields; 9F4A is named, its octet opaque.
         GoldenVector(
             name = "READ RECORD",
             hexFile = "03-read-record.hex",
@@ -207,7 +207,7 @@ internal val VECTORS: List<GoldenVector> =
                     leaf("9F0E", 0x05, bits(flags = IAC_DENIAL_0000080000), value = "0000080000"),
                     leaf("9F0F", 0x05, bits(flags = IAC_ONLINE_BC70BC9800), value = "BC70BC9800"),
                     leaf("5F28", 0x02, digits("0643"), value = "0643"),
-                    leaf("9F4A", 0x01, ExpectedDecode.Unknown, value = "82"),
+                    leaf("9F4A", 0x01, raw("82"), value = "82"),
                 ),
         ),
         // 4 - GENERATE AC Format 2. CID 00 is AAC (decline); ATC is RawBinary, not Digits; the

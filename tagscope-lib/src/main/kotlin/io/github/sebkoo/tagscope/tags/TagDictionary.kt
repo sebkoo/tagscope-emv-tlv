@@ -73,11 +73,15 @@ public object TagDictionary {
             entry("9F20", "Track 2 Discretionary Data", COMPRESSED_NUMERIC, 0, 252, sensitive = SENSITIVE),
             entry("9F26", "Application Cryptogram", BINARY, 8, 8, "opaque here, never interpreted"),
             entry("9F27", "Cryptogram Information Data", BINARY, 1, 1, "bit field"),
+            entry("9F33", "Terminal Capabilities", BINARY, 3, 3, "named only, not decoded here"),
             entry("9F34", "Cardholder Verification Method (CVM) Results", BINARY, 3, 3, "method, condition, result"),
+            entry("9F35", "Terminal Type", NUMERIC, 1, 1),
             entry("9F36", "Application Transaction Counter (ATC)", BINARY, 2, 2),
             entry("9F37", "Unpredictable Number", BINARY, 4, 4),
             entry("9F38", "Processing Options Data Object List (PDOL)", BINARY, 0, 252, "a DOL"),
+            entry("9F40", "Additional Terminal Capabilities", BINARY, 5, 5, "named only, not decoded here"),
             entry("9F42", "Application Currency Code", NUMERIC, 2, 2, "ISO 4217 numeric"),
+            entry("9F4A", "Static Data Authentication Tag List", BINARY, 0, 252, "named only, not decoded here"),
             entry("A5", "File Control Information (FCI) Proprietary Template", VAR, 0, 252),
         )
 

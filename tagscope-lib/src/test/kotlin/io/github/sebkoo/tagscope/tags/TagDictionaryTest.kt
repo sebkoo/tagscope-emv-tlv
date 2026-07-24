@@ -227,9 +227,12 @@ private val EXPECTED_NOTES: Map<String, String> =
         "9F1A" to "ISO 3166 numeric",
         "9F26" to "opaque here, never interpreted",
         "9F27" to "bit field",
+        "9F33" to "named only, not decoded here",
         "9F34" to "method, condition, result",
         "9F38" to "a DOL",
+        "9F40" to "named only, not decoded here",
         "9F42" to "ISO 4217 numeric",
+        "9F4A" to "named only, not decoded here",
     )
 
 /** One expected row, written from the specification rather than read from the dictionary. */
@@ -296,10 +299,14 @@ private val EXPECTED: List<Expected> =
         Expected("9F20", "Track 2 Discretionary Data", CONTEXT_SPECIFIC, false, COMPRESSED_NUMERIC, 0, 252, true),
         Expected("9F26", "Application Cryptogram", CONTEXT_SPECIFIC, false, BINARY, 8, 8),
         Expected("9F27", "Cryptogram Information Data", CONTEXT_SPECIFIC, false, BINARY, 1, 1),
+        Expected("9F33", "Terminal Capabilities", CONTEXT_SPECIFIC, false, BINARY, 3, 3),
         Expected("9F34", "Cardholder Verification Method (CVM) Results", CONTEXT_SPECIFIC, false, BINARY, 3, 3),
+        Expected("9F35", "Terminal Type", CONTEXT_SPECIFIC, false, NUMERIC, 1, 1),
         Expected("9F36", "Application Transaction Counter (ATC)", CONTEXT_SPECIFIC, false, BINARY, 2, 2),
         Expected("9F37", "Unpredictable Number", CONTEXT_SPECIFIC, false, BINARY, 4, 4),
         Expected("9F38", "Processing Options Data Object List (PDOL)", CONTEXT_SPECIFIC, false, BINARY, 0, 252),
+        Expected("9F40", "Additional Terminal Capabilities", CONTEXT_SPECIFIC, false, BINARY, 5, 5),
         Expected("9F42", "Application Currency Code", CONTEXT_SPECIFIC, false, NUMERIC, 2, 2),
+        Expected("9F4A", "Static Data Authentication Tag List", CONTEXT_SPECIFIC, false, BINARY, 0, 252),
         Expected("A5", "File Control Information (FCI) Proprietary Template", CONTEXT_SPECIFIC, true, VAR, 0, 252),
     )

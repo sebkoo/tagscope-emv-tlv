@@ -9,16 +9,17 @@ import org.junit.jupiter.api.Test
  * How a Data Object List renders. The Visa PDOL (`9F38`) is a run of (tag, length) requests, and it
  * prints as entry sub-lines under the DOL rather than as a hex value — the tag, its dictionary name
  * (resolved here at render time, `Unknown` for a tag the dictionary does not carry yet), and the
- * octet count the terminal must supply, singular or plural.
+ * octet count the terminal must supply, singular or plural. Vector 2's PDOL references the terminal
+ * tags 9F33/9F35/9F40, which the dictionary now names.
  */
 class DolOutputTest {
     private val pdolTree =
         listOf(
             "    9F38  Processing Options Data Object List (PDOL)           [12]",
-            "          - 9F33  Unknown  (3 bytes)",
+            "          - 9F33  Terminal Capabilities  (3 bytes)",
             "          - 9F1A  Terminal Country Code  (2 bytes)",
-            "          - 9F35  Unknown  (1 byte)",
-            "          - 9F40  Unknown  (5 bytes)",
+            "          - 9F35  Terminal Type  (1 byte)",
+            "          - 9F40  Additional Terminal Capabilities  (5 bytes)",
         ).joinToString("\n")
 
     @Test
@@ -40,10 +41,10 @@ class DolOutputTest {
 
         assertEquals(ExitCode.SUCCESS, outcome.exitCode, "the vector decodes")
         val entries =
-            """"entries": [{"tag": "9F33", "name": "Unknown", "length": 3}, """ +
+            """"entries": [{"tag": "9F33", "name": "Terminal Capabilities", "length": 3}, """ +
                 """{"tag": "9F1A", "name": "Terminal Country Code", "length": 2}, """ +
-                """{"tag": "9F35", "name": "Unknown", "length": 1}, """ +
-                """{"tag": "9F40", "name": "Unknown", "length": 5}]"""
+                """{"tag": "9F35", "name": "Terminal Type", "length": 1}, """ +
+                """{"tag": "9F40", "name": "Additional Terminal Capabilities", "length": 5}]"""
         assertTrue(outcome.stdout.contains(entries), "the PDOL emits a JSON entries array:\n${outcome.stdout}")
         assertFalse(
             outcome.stdout.contains("9F33039F1A029F35019F4005"),
