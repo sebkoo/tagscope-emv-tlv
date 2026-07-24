@@ -1,0 +1,8 @@
+# Vector 14 - GET PROCESSING OPTIONS command data, built from the Visa PDOL of Vector 2
+# Synthetic terminal parameters; no cardholder data. Values only - no tags, no lengths, no APDU.
+# PDOL 9F38 = (9F33,3)(9F1A,2)(9F35,1)(9F40,5), so the command data is 11 octets. Book 3 v4.4 §5.4.
+#   9F33 Terminal Capabilities         E0F8C8      -> E0F8C8      supplied, exact length
+#   9F1A Terminal Country Code         0840        -> 0840        supplied, exact length
+#   9F35 Terminal Type                 22          -> 22          supplied, exact length
+#   9F40 Additional Terminal Caps      not given   -> 0000000000  absent: all-zero fill
+E0 F8 C8 08 40 22 00 00 00 00 00

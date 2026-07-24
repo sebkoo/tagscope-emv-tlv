@@ -1,0 +1,18 @@
+# Vector 15 - GENERATE AC command data, built from the CDOL1 (8C) of Vector 3
+# Synthetic terminal parameters; no cardholder data. A CDOL never requests the PAN or Track 2.
+# CDOL1 = 9F02:6 9F03:6 9F1A:2 95:5 5F2A:2 9A:3 9C:1 9F37:4 9F35:1 9F45:2 9F4C:8 9F34:3 = 43 octets.
+# Each entry names the Book 3 v4.4 §5.4 rule it exercises:
+#   9F02 Amount, Authorised (n)    123456           -> 000000123456      short: pad LEADING 00
+#   9F03 Amount, Other (n)         not given        -> 000000000000      absent: all-zero fill
+#   9F1A Terminal Country Code (n) 0840             -> 0840              exact
+#   95   Terminal Verif. Results   0000000000       -> 0000000000        exact
+#   5F2A Transaction Currency (n)  0840             -> 0840              exact
+#   9A   Transaction Date (n)      260724           -> 260724            exact (2026-07-24)
+#   9C   Transaction Type (n)      00               -> 00                exact
+#   9F37 Unpredictable Number      01A2B3C4         -> 01A2B3C4          exact
+#   9F35 Terminal Type (n)         22               -> 22                exact
+#   9F45 Data Authentication Code  not given        -> 0000              absent, and not in the dictionary
+#   9F4C ICC Dynamic Number        0011223344556677 -> 0011223344556677  not in the dictionary, but given
+#   9F34 CVM Results               1E03             -> 1E0300            short: pad TRAILING 00
+00 00 00 12 34 56 00 00 00 00 00 00 08 40 00 00 00 00 00 08 40 26 07 24 00
+01 A2 B3 C4 22 00 00 00 11 22 33 44 55 66 77 1E 03 00

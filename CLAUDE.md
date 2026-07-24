@@ -21,6 +21,12 @@ execute the transaction flow, make terminal decisions, manage terminal or kernel
 handle PINs, speak ISO 8583, or go online. It decodes the CVM List (`8E`) and CVM Results
 (`9F34`) as data structures; it never processes a PIN or performs cardholder verification.
 
+It also **writes** the two things it reads: `TlvEncoder` turns a tag tree back into octets, and
+`DolEncoder` fills a DOL into the command data field a terminal would send. Both are data assembly,
+not flow — `DolEncoder` builds the data field only, never the APDU header, `Lc`, `Le`, a cryptogram,
+or the decision to send. That is inside the boundary and deliberately at its edge; do not extend it
+into APDU construction or transaction execution.
+
 Do not add features from that list, and do not describe the project as having them. If a task
 seems to require kernel behaviour, stop and ask rather than widening the scope.
 

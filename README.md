@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/sebkoo/tagscope-emv-tlv/actions"><img alt="Build" src="https://github.com/sebkoo/tagscope-emv-tlv/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://central.sonatype.com/artifact/io.github.sebkoo/tagscope"><img alt="Maven Central" src="https://img.shields.io/maven-central/v/io.github.sebkoo/tagscope?label=Maven%20Central"></a>
-  <img alt="Tests" src="https://img.shields.io/badge/tests-420%2B%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-460%2B%20passing-brightgreen">
   <img alt="Runtime dependencies" src="https://img.shields.io/badge/runtime%20dependencies-0-success">
   <img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue">
   <br>
@@ -244,6 +244,65 @@ that carries a PAN.
 
 ---
 
+## Build the command, not just read the response
+
+Everything above reads the card's half of the conversation. But a DOL isn't a value — it's a
+*question*. When the card sends a PDOL it is telling the terminal: **hand me these elements, in this
+order, in exactly these widths.** Tagscope could decode that question all day and still not answer
+it. Now it can.
+
+```kotlin
+// A tag from the hex the spec prints it as.
+fun tag(hex: String) = TlvTag(hex.toLong(16), hex.length / 2)
+
+// pdol is the 9F38 the card sent, already decoded: (9F33,3)(9F1A,2)(9F35,1)(9F40,5)
+val terminalData = mapOf(
+    tag("9F33") to byteArrayOf(0xE0.toByte(), 0xF8.toByte(), 0xC8.toByte()), // Terminal Capabilities
+    tag("9F1A") to byteArrayOf(0x08, 0x40),                                  // Terminal Country Code
+    tag("9F35") to byteArrayOf(0x22),                                        // Terminal Type
+)   // ...and nothing for 9F40: this terminal has no value for it
+
+val command = DolEncoder.build(pdol, terminalData)   // EncodeResult.Success, 11 octets
+```
+
+```
+E0 F8 C8   08 40   22     00 00 00 00 00
+└─ 9F33 ┘  └9F1A┘  9F35   └─── 9F40 ───┘
+  exact     exact   exact   absent → zeros
+```
+
+The command data carries **no tags and no lengths** — just values, back to back. That is what makes
+the widths load-bearing: the card recovers each field's boundary by re-walking its own DOL, so one
+field a byte short silently corrupts every field after it. Which is why fitting a value to its length
+is not a `memcpy`. EMV Book 3 §5.4 gives different rules per direction, and which one applies depends
+on the tag's format:
+
+| The value is… | `n` (numeric) | `cn` (compressed numeric) | everything else |
+|---|---|---|---|
+| **too short** → pad | leading `00` | trailing `FF` | trailing `00` |
+| **too long** → truncate | keep the **rightmost** | keep the **leftmost** | keep the **leftmost** |
+
+The asymmetry is real, and it's the part worth getting right: `n` is right-justified, so its fill
+sits on the left and *both* its rules act there; `cn` is left-justified, so both of its rules act on
+the right. Either way the octets added or dropped are always padding, never a digit. A tag you supply
+no value for fills with zeroes — the spec's own rule for an element the terminal doesn't hold.
+
+So an authorised amount of 1234.56 handed to a CDOL1 entry six octets wide goes out the way a real
+terminal sends it:
+
+```
+9F02  Amount, Authorised — format n, CDOL1 asks for 6 octets
+
+supplied   12 34 56
+built      00 00 00 12 34 56     ← leading zeroes, because n is right-justified
+```
+
+**What this is not.** It builds the command *data field* and nothing around it: no CLA/INS header, no
+`Lc`, no `Le`, no cryptogram, and no decision about what to send or when. Tagscope still isn't a
+kernel. It just no longer stops halfway through the sentence.
+
+---
+
 ## Anatomy of an EMV transaction
 
 The data objects Tagscope decodes are the messages of a chip/contactless transaction, exchanged in a
@@ -292,8 +351,10 @@ $ tagscope 6F288407A0000000031010A51D5004564953418701019F380C9F33039F1A029F35019
     5F2D  Language Preference                                  [2]   de
 ```
 
-**3 — GET PROCESSING OPTIONS.** The terminal sends the PDOL-filled command; the card returns the
-**AIP** (what it supports) and the **AFL** (which records the terminal must now read):
+**3 — GET PROCESSING OPTIONS.** The terminal sends the PDOL-filled command — the one step of this
+walk Tagscope can *build* as well as read, per *Build the command, not just read the response* above
+— and the card returns the **AIP** (what it supports) and the **AFL** (which records the terminal
+must now read):
 
 ```console
 $ tagscope 770A82021C00940408010100
@@ -384,6 +445,11 @@ when (val result = TlvParser.parse(bytes)) {
 - **Lints for EMV consistency** — a `tagscope lint` subcommand runs spec-cited rules over the
   decoded tree (mandatory FCI tags, reserved bits, DOL and CVM-List anomalies, unknown tags),
   reports findings by severity, and **exits non-zero on any error** so it can gate a script or CI.
+- **Builds the command a terminal sends** — fills a PDOL or CDOL from a map of terminal data into
+  the GET PROCESSING OPTIONS / GENERATE AC data field, applying EMV Book 3 §5.4's format-specific
+  rules byte-exactly (`n` left-pads `00`, `cn` right-pads `FF`, everything else right-pads `00`; an
+  element you don't supply fills with zeroes). The DOL layer now round-trips: read the question,
+  write the answer.
 - **Round-trips** — `encode(parse(x)) == x`, byte-for-byte. What it reads, it can write back.
 - **Masks sensitive data by default** — PAN, Track 1/2 (incl. discretionary), PIN, and cardholder
   name are redacted unless you pass `--reveal`. See *Security* below for why this is impossible to
@@ -428,15 +494,16 @@ The library and command-line tool are **done and fully tested**. Here's the whol
 | 7 | `encode()` — the byte-exact inverse of parse | ✅ done |
 | 8 | **Golden vectors** — 6 real EMV records, byte-verified vs. Book 3 | ✅ done |
 | 9 | The **CLI** — decode, `--json`, PAN masking, `--reveal` | ✅ done |
-| 10 | Comprehensive CLI test suite (**420+ tests total**) | ✅ done |
+| 10 | Comprehensive CLI test suite (**460+ tests total**) | ✅ done |
 | 11 | This README + first public release | ✅ done |
 | 12 | DOL parsing — PDOL/CDOL into typed (tag, length) entries | ✅ done |
 | 13 | CVM-List (`8E`) — amounts + cardholder-verification rules | ✅ done |
 | 14 | Wider tag & sensitive-field coverage (masking + named terminal tags) | ✅ done |
 | 15 | **EMV consistency checker** (`lint`) — spec-cited rules + negative-test vectors | ✅ done |
+| 16 | **Build command data from a DOL** (terminal side) + Java interop test | ✅ done |
 | — | Publish to Maven Central | ✅ Published to Maven Central |
 
-**420+ tests. Zero runtime dependencies. No real cardholder data anywhere in the repo.**
+**460+ tests. Zero runtime dependencies. No real cardholder data anywhere in the repo.**
 
 ---
 
@@ -477,8 +544,8 @@ Tagscope is — stated with its limits, because the honesty is the point.
 |---|---|---|
 | Terminal development & field-level troubleshooting | Byte-level fluency in the EMV data model — BER-TLV parsing, ~40 core tags, and TVR / AIP / CID / IAC bit-fields decoded to plain English: the exact reading you do when a terminal declines in the field | A terminal or payment kernel — no live transaction execution |
 | Certification testing & defect resolution | The triage instinct cert work runs on — *trust the raw bytes over the published summary* (a real published-summary error is corrected and pinned in the tests) — plus a `lint` consistency checker whose spec-cited rules are exercised by **deliberately-malformed negative-test vectors** that reproduce each defect, and golden vectors verified byte-for-byte against **EMVCo Book 3 v4.4** | Certification experience — no payment-processor integration |
-| EMV transaction flows & terminal parameters | Decodes the PDOL/CDOL the terminal fills for GPO / GENERATE AC into their `(tag, length)` entries, fully decodes the AIP / CID / TVR action-analysis data and the IAC / AUC parameters, and walks a whole PPSE → SELECT → GPO → READ RECORD flow, decoding **and** linting each step | The flow engine or a parameter-management system |
-| Java & Kotlin application development | Production **Kotlin/JVM**: idiomatic sealed types, **zero runtime dependencies**, **420+ tests**, green CI, byte-verified against the spec | (The codebase is Kotlin on the JVM; Java interop is native but not exercised here) |
+| EMV transaction flows & terminal parameters | Decodes the PDOL/CDOL the terminal fills for GPO / GENERATE AC into their `(tag, length)` entries **and builds the command data they ask for**, applying Book 3 §5.4's format-specific padding and truncation byte-exactly; fully decodes the AIP / CID / TVR action-analysis data and the IAC / AUC parameters, and walks a whole PPSE → SELECT → GPO → READ RECORD flow, decoding **and** linting each step | The flow engine or a parameter-management system — it builds the data field, never the APDU, the cryptogram or the decision |
+| Java & Kotlin application development | Production **Kotlin/JVM**: idiomatic sealed types, **zero runtime dependencies**, **460+ tests**, green CI, byte-verified against the spec — and a **Java interop test** that drives the whole parse → decode → build path from Java, so the JVM API is proven from both languages | Large-scale application delivery — this is a focused library and CLI, not a system |
 | Cross-functional certification collaboration | Collaboration-ready habits: honestly-scoped claims, atomic reviewable commits, and docs a QA or cert partner can follow | Team/cross-functional experience — this is a solo project |
 
 **In one line:** this is the EMV data-model fluency and the byte-level verification discipline the
