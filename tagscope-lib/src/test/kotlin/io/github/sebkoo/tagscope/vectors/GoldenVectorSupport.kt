@@ -147,6 +147,20 @@ internal sealed interface ExpectedDecode {
         )
     }
 
+    /** `DecodedValue.CvmList` with these two amounts and exactly these CV Rules, in wire order. */
+    data class CvmList(
+        val amountX: Long,
+        val amountY: Long,
+        val rules: List<Rule>,
+    ) : ExpectedDecode {
+        /** One expected CV Rule: the method code (`b6..b1`), the apply-next flag, the condition code. */
+        data class Rule(
+            val methodCode: Int,
+            val applyNextIfFailed: Boolean,
+            val conditionCode: Int,
+        )
+    }
+
     /** `DecodedValue.Sensitive`; the default decode redacts and leaks nothing. */
     data object Sensitive : ExpectedDecode
 
@@ -181,6 +195,20 @@ internal fun text(text: String): ExpectedDecode = ExpectedDecode.Text(text)
 /** `DecodedValue.Dol` with these (tag hex, length) entries, in wire order. */
 internal fun dol(vararg entries: Pair<String, Int>): ExpectedDecode =
     ExpectedDecode.Dol(entries.map { (tag, length) -> ExpectedDecode.Dol.Entry(tag, length) })
+
+/** `DecodedValue.CvmList` with amounts [amountX]/[amountY] and these CV [rules], in wire order. */
+internal fun cvmList(
+    amountX: Long,
+    amountY: Long,
+    vararg rules: ExpectedDecode.CvmList.Rule,
+): ExpectedDecode = ExpectedDecode.CvmList(amountX, amountY, rules.toList())
+
+/** One expected CV Rule: method code (`b6..b1`), apply-next flag, condition code. */
+internal fun rule(
+    methodCode: Int,
+    applyNextIfFailed: Boolean,
+    conditionCode: Int,
+): ExpectedDecode.CvmList.Rule = ExpectedDecode.CvmList.Rule(methodCode, applyNextIfFailed, conditionCode)
 
 /** `DecodedValue.Digits([digits])`. */
 internal fun digits(digits: String): ExpectedDecode = ExpectedDecode.Digits(digits)

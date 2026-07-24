@@ -201,4 +201,19 @@ public sealed class DecodeError {
         override val tag: TlvTag,
         override val offset: Int,
     ) : DecodeError()
+
+    /**
+     * A Cardholder Verification Method List (`8E`) whose octets are not two four-octet amounts
+     * followed by a whole number of two-octet CV Rules: fewer than eight octets, so the two amounts
+     * do not fit; or an odd octet left over after them, so the last CV Rule is a single byte.
+     *
+     * A CVM List is not cardholder data, so [offset] may be precise. When the value is too short for
+     * the amounts, it is the object's own first identifier octet — the whole object is undersized,
+     * not one place in it, the way [UnexpectedValueLength] points at the object. When an octet is
+     * left over, it is that stray octet, within the buffer that was parsed.
+     */
+    public data class MalformedCvmList(
+        override val tag: TlvTag,
+        override val offset: Int,
+    ) : DecodeError()
 }

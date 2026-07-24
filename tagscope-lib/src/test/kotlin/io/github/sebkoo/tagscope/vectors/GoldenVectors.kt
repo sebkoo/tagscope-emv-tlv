@@ -140,8 +140,8 @@ internal val VECTORS: List<GoldenVector> =
                 ),
         ),
         // 3 - READ RECORD, long-form length 81 8C. PAN masked by default; dates keep a two-digit
-        // year; the DOLs 8C/8D decode to their (tag, length) entries and the CVM List 8E stays
-        // opaque; the IACs are TVR-shaped bit fields; 9F4A Unknown.
+        // year; the DOLs 8C/8D decode to their (tag, length) entries and the CVM List 8E to its
+        // amounts and CV Rules; the IACs are TVR-shaped bit fields; 9F4A Unknown.
         GoldenVector(
             name = "READ RECORD",
             hexFile = "03-read-record.hex",
@@ -184,7 +184,25 @@ internal val VECTORS: List<GoldenVector> =
                         dol("91" to 10, "8A" to 2, "95" to 5, "9F37" to 4, "9F4C" to 8),
                         value = "910A8A0295059F37049F4C08",
                     ),
-                    leaf("8E", 0x14, rawOpaque(0x14)),
+                    // 8E CVM List: amounts X=0, Y=0, then six CV Rules. Derived byte-for-byte from
+                    // 00000000 00000000 4201 4403 4103 4203 1E03 1F03 — apply-next (0x40) set on the
+                    // first four codes, clear on the last two; methods 02/04/01/02/1E/1F; conditions
+                    // 01 then 03 five times. Book 3 Annex C3, Tables 43 and 44.
+                    leaf(
+                        "8E",
+                        0x14,
+                        cvmList(
+                            amountX = 0,
+                            amountY = 0,
+                            rule(0x02, applyNextIfFailed = true, conditionCode = 0x01),
+                            rule(0x04, applyNextIfFailed = true, conditionCode = 0x03),
+                            rule(0x01, applyNextIfFailed = true, conditionCode = 0x03),
+                            rule(0x02, applyNextIfFailed = true, conditionCode = 0x03),
+                            rule(0x1E, applyNextIfFailed = false, conditionCode = 0x03),
+                            rule(0x1F, applyNextIfFailed = false, conditionCode = 0x03),
+                        ),
+                        value = "000000000000000042014403410342031E031F03",
+                    ),
                     leaf("9F0D", 0x05, bits(flags = IAC_DEFAULT_BC50BC8800), value = "BC50BC8800"),
                     leaf("9F0E", 0x05, bits(flags = IAC_DENIAL_0000080000), value = "0000080000"),
                     leaf("9F0F", 0x05, bits(flags = IAC_ONLINE_BC70BC9800), value = "BC70BC9800"),

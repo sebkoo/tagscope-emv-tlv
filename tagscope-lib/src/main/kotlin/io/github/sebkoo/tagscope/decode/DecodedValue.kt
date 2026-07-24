@@ -369,6 +369,75 @@ public sealed interface DecodedValue {
     }
 
     /**
+     * The Cardholder Verification Method List (tag `8E`): two amount thresholds and the CV Rules.
+     *
+     * A CVM List is two four-octet binary amounts — [amountX] then [amountY], the thresholds the
+     * "under/over X/Y" conditions test against — followed by a run of two-octet CV Rules, [rules],
+     * in the order the card lists them. The card states the priority order of the verification
+     * methods a terminal should attempt; this reads the list, and does not itself verify a
+     * cardholder or process a PIN — that is outside this library's scope.
+     *
+     * A [CvmRule] carries only the codes it read, not their meanings: the method and condition names
+     * are a reading of those codes, resolved through [CvmCodes] by whoever displays the list, the
+     * same way a [Dol.Entry] carries a bare tag and its name is looked up later. None of this is
+     * cardholder data.
+     *
+     * Not a data class, for the reason [Dol] is not: the list is copied in and wrapped so a caller
+     * cannot reach back into it, and [equals] compares the amounts and the rules in order.
+     *
+     * EMV Book 3 v4.4, §10.5 and Annex C3.
+     */
+    public class CvmList(
+        public val amountX: Long,
+        public val amountY: Long,
+        rules: List<CvmRule>,
+    ) : DecodedValue {
+        /** The CV Rules, in the wire order the card lists them. */
+        public val rules: List<CvmRule> = Collections.unmodifiableList(rules.toList())
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is CvmList) return false
+            return amountX == other.amountX && amountY == other.amountY && rules == other.rules
+        }
+
+        override fun hashCode(): Int {
+            var result = amountX.hashCode()
+            result = HASH_FACTOR * result + amountY.hashCode()
+            result = HASH_FACTOR * result + rules.hashCode()
+            return result
+        }
+
+        /** The amounts and rule codes, which are the point of decoding a CVM List and carry nothing sensitive. */
+        override fun toString(): String =
+            rules.joinToString(
+                prefix = "CvmList(X=$amountX, Y=$amountY, ",
+                postfix = ")",
+            ) { "${it.methodCode}:${it.conditionCode}${if (it.applyNextIfFailed) "+" else ""}" }
+
+        /**
+         * One CV Rule: a verification method to attempt, under a condition, if this rule applies.
+         *
+         * [methodCode] is the six low bits (`b6..b1`) of the CVM Code byte — the RFU bit `b8` and
+         * the apply-next bit `b7` taken off — and names the method via [CvmCodes.method].
+         * [applyNextIfFailed] is that `b7`: set means "apply the succeeding CV Rule if this CVM is
+         * unsuccessful", clear means "fail cardholder verification if this CVM is unsuccessful".
+         * [conditionCode] is the whole condition octet, named via [CvmCodes.condition].
+         *
+         * Book 3 v4.4, Annex C3, Tables 43 and 44.
+         */
+        public data class CvmRule(
+            public val methodCode: Int,
+            public val applyNextIfFailed: Boolean,
+            public val conditionCode: Int,
+        )
+
+        private companion object {
+            private const val HASH_FACTOR: Int = 31
+        }
+    }
+
+    /**
      * This data object's value is other data objects, so there is no scalar here to decode.
      *
      * Decided by bit 6 of the first identifier octet and nothing else, the same rule `TlvParser`

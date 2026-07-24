@@ -141,6 +141,9 @@ private fun renderPrimitive(
                 null
             }
             is DecodedValue.Track2 -> track2(decoded)
+            // A CVM List decodes to its amounts and CV Rules; rendering those as sub-lines lands in
+            // the next commit. Until then it shows its octets, as it did when it was opaque RawBinary.
+            is DecodedValue.CvmList -> rawHex
             // Unreachable for a primitive: Constructed is handled above and Sensitive was unwrapped.
             // Fall back to something that reveals nothing, so an invariant slip cannot leak.
             is DecodedValue.Constructed -> rawHex
@@ -188,6 +191,7 @@ private fun decodeNote(error: DecodeError): String =
         is DecodeError.Track2MissingFields -> "Track 2 missing fields"
         is DecodeError.Track2MonthOutOfRange -> "Track 2 month out of range"
         is DecodeError.MalformedDol -> "malformed DOL entry"
+        is DecodeError.MalformedCvmList -> "malformed CVM List"
     }
 
 private fun leafless(

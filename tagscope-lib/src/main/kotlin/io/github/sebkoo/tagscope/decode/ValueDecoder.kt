@@ -99,6 +99,7 @@ public object ValueDecoder {
         when (node.tag) {
             TRACK2_TAG -> track2(node, value)
             DF_NAME_TAG -> dfName(value)
+            CVM_LIST_TAG -> cvmList(node, value)
             in DOL_TAGS -> dol(node, value)
             else ->
                 when (val spec = BitFieldTable.specFor(node.tag)) {
@@ -106,6 +107,63 @@ public object ValueDecoder {
                     else -> bitField(node, value, spec)
                 }
         }
+
+    /**
+     * The Cardholder Verification Method List (`8E`): two four-octet binary amounts, then a run of
+     * two-octet CV Rules. The amounts are Amount X then Amount Y, the thresholds the "under/over X/Y"
+     * conditions test against, each an unsigned big-endian integer — read into a `Long` because a
+     * full four octets, `0xFFFFFFFF`, overflows a signed `Int`. Each CV Rule that follows is a CVM
+     * Code octet and a Condition octet: the code's low six bits are the method, its `b7` (`0x40`) the
+     * apply-next flag, its `b8` RFU; the condition octet is taken whole. An amounts-only list — eight
+     * octets and no rules — is well-formed and has no rules.
+     *
+     * Two malformations, returned and never thrown, the same as every other decode: fewer than eight
+     * octets cannot hold the two amounts, and an odd octet left after them cannot complete a rule.
+     * Both are [DecodeError.MalformedCvmList]; the amounts are read only once the length is known to
+     * admit them and the rules to pair up. This performs no cardholder verification — it reads the
+     * list the card states, nothing more. EMV Book 3 v4.4, §10.5 and Annex C3.
+     */
+    private fun cvmList(
+        node: TlvNode,
+        value: ByteArray,
+    ): DecodeResult {
+        if (value.size < CVM_LIST_AMOUNTS_OCTETS) {
+            return DecodeResult.Failure(DecodeError.MalformedCvmList(node.tag, node.offset))
+        }
+        if ((value.size - CVM_LIST_AMOUNTS_OCTETS) % CVM_RULE_OCTETS != 0) {
+            return DecodeResult.Failure(
+                DecodeError.MalformedCvmList(node.tag, node.valueOffset + value.size - 1),
+            )
+        }
+        val amountX = uInt32(value, 0)
+        val amountY = uInt32(value, AMOUNT_FIELD_OCTETS)
+        val rules = mutableListOf<DecodedValue.CvmList.CvmRule>()
+        var offset = CVM_LIST_AMOUNTS_OCTETS
+        while (offset < value.size) {
+            val code = value[offset].toInt() and UNSIGNED_OCTET
+            val condition = value[offset + 1].toInt() and UNSIGNED_OCTET
+            rules +=
+                DecodedValue.CvmList.CvmRule(
+                    methodCode = code and CVM_METHOD_MASK,
+                    applyNextIfFailed = code and CVM_APPLY_NEXT_BIT != 0,
+                    conditionCode = condition,
+                )
+            offset += CVM_RULE_OCTETS
+        }
+        return DecodeResult.Success(DecodedValue.CvmList(amountX, amountY, rules))
+    }
+
+    /** A four-octet unsigned big-endian integer at [at], widened to a `Long` so `0xFFFFFFFF` fits. */
+    private fun uInt32(
+        value: ByteArray,
+        at: Int,
+    ): Long {
+        var result = 0L
+        for (index in 0 until AMOUNT_FIELD_OCTETS) {
+            result = (result shl BITS_PER_OCTET) or (value[at + index].toLong() and UNSIGNED_OCTET.toLong())
+        }
+        return result
+    }
 
     /**
      * A Data Object List (`9F38` PDOL, `8C` CDOL1, `8D` CDOL2): a run of (tag, length) entries with
@@ -573,6 +631,9 @@ public object ValueDecoder {
     /** DF Name (`84`): `b` in Annex A, but textual for a PSE directory and binary for an AID. */
     private val DF_NAME_TAG: TlvTag = TlvTag(value = 0x84, octetLength = 1)
 
+    /** Cardholder Verification Method List (`8E`), read into its amounts and CV Rules. */
+    private val CVM_LIST_TAG: TlvTag = TlvTag(value = 0x8E, octetLength = 1)
+
     /** The Data Object Lists this library reads into (tag, length) entries: PDOL, CDOL1, CDOL2. */
     private val DOL_TAGS: Set<TlvTag> =
         setOf(
@@ -599,6 +660,21 @@ public object ValueDecoder {
 
     /** Twelve digits of `n 12`, two per octet. */
     private const val AMOUNT_OCTETS: Int = 6
+
+    /** A CVM List's two four-octet amounts, before any CV Rules. */
+    private const val CVM_LIST_AMOUNTS_OCTETS: Int = 8
+
+    /** One CVM List amount field: a four-octet binary integer. */
+    private const val AMOUNT_FIELD_OCTETS: Int = 4
+
+    /** One CV Rule: a CVM Code octet and a Condition octet. */
+    private const val CVM_RULE_OCTETS: Int = 2
+
+    /** The CVM Code's method, bits `b6..b1`. */
+    private const val CVM_METHOD_MASK: Int = 0x3F
+
+    /** The CVM Code's `b7`: apply the succeeding CV Rule if this CVM is unsuccessful. */
+    private const val CVM_APPLY_NEXT_BIT: Int = 0x40
 
     /** The `D` nibble that separates the PAN from the fields after it in Track 2. */
     private const val SEPARATOR_NIBBLE: Int = 0x0D

@@ -259,57 +259,11 @@ internal object BitFieldTable {
         )
 
     /**
-     * The CVM Code, byte 1 of the CVM Results. Book 3 v4.4, Annex C3, Table 43, keyed by `b6..b1`;
-     * `3F` is Book 4 v4.4 Annex A4's "No CVM performed", which overrides Table 43's "not available".
-     */
-    private val CVM_METHODS: Map<Int, String> =
-        mapOf(
-            0x00 to "Fail CVM processing",
-            0x01 to "Plaintext PIN verification performed by ICC",
-            0x02 to "Enciphered PIN verified online",
-            0x03 to "Plaintext PIN verification performed by ICC and signature",
-            0x04 to "Enciphered PIN verification performed by ICC",
-            0x05 to "Enciphered PIN verification performed by ICC and signature",
-            0x06 to "Facial biometric verified offline (by ICC)",
-            0x07 to "Facial biometric verified online",
-            0x08 to "Finger biometric verified offline (by ICC)",
-            0x09 to "Finger biometric verified online",
-            0x0A to "Palm biometric verified offline (by ICC)",
-            0x0B to "Palm biometric verified online",
-            0x0C to "Iris biometric verified offline (by ICC)",
-            0x0D to "Iris biometric verified online",
-            0x0E to "Voice biometric verified offline (by ICC)",
-            0x0F to "Voice biometric verified online",
-            0x1E to "Signature",
-            0x1F to "No CVM required",
-            0x3F to "No CVM performed",
-        ) +
-            (0x10..0x1D).associateWith { "RFU (reserved for future use by this specification)" } +
-            (0x20..0x2F).associateWith { "Reserved for use by the individual payment systems" } +
-            (0x30..0x3E).associateWith { "Reserved for use by the issuer" }
-
-    /** The CVM Condition Code, byte 2 of the CVM Results. Book 3 v4.4, Annex C3, Table 44. */
-    private val CVM_CONDITIONS: Map<Int, String> =
-        mapOf(
-            0x00 to "Always",
-            0x01 to "If unattended cash",
-            0x02 to "If not unattended cash and not manual cash and not purchase with cashback",
-            0x03 to "If terminal supports the CVM",
-            0x04 to "If manual cash",
-            0x05 to "If purchase with cashback",
-            0x06 to "If transaction is in the application currency and is under X value",
-            0x07 to "If transaction is in the application currency and is over X value",
-            0x08 to "If transaction is in the application currency and is under Y value",
-            0x09 to "If transaction is in the application currency and is over Y value",
-        ) +
-            (0x0A..0x7F).associateWith { "RFU" } +
-            (0x80..0xFF).associateWith { "Reserved for use by individual payment systems" }
-
-    /**
      * CVM Results (`9F34`), three enum lanes: the CVM performed, the condition it was performed
      * under, and the result. Book 4 v4.4, Annex A4 (Table 33); the byte 1 method and byte 2
-     * condition are Book 3's, the byte 3 result is Book 4's. Byte 1 `b7` is the CV Rule's own
-     * "apply succeeding rule" bit, reported only when set; `b8` is RFU.
+     * condition are Book 3's — resolved through the shared [CvmCodes] tables the CVM List (`8E`)
+     * reads too, so the two tags cannot drift — and the byte 3 result is Book 4's. Byte 1 `b7` is
+     * the CV Rule's own "apply succeeding rule" bit, reported only when set; `b8` is RFU.
      */
     private val CVM: BitFieldSpec =
         BitFieldSpec(
@@ -320,8 +274,8 @@ internal object BitFieldTable {
                 ),
             enums =
                 listOf(
-                    EnumRule(0, "CVM performed", 0x3F, CVM_METHODS),
-                    EnumRule(1, "CVM condition", 0xFF, CVM_CONDITIONS),
+                    EnumRule(0, "CVM performed", 0x3F, CvmCodes.METHODS),
+                    EnumRule(1, "CVM condition", 0xFF, CvmCodes.CONDITIONS),
                     EnumRule(2, "CVM result", 0xFF, mapOf(0 to "Unknown", 1 to "Failed", 2 to "Successful")),
                 ),
         )

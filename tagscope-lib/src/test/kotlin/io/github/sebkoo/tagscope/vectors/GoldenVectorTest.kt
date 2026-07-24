@@ -128,6 +128,18 @@ class GoldenVectorTest {
                     "$where DOL entries",
                 )
             }
+            is ExpectedDecode.CvmList -> {
+                val cvm = value as? DecodedValue.CvmList ?: fail("$where expected CvmList, got $value")
+                assertEquals(expected.amountX, cvm.amountX, "$where CVM List amount X")
+                assertEquals(expected.amountY, cvm.amountY, "$where CVM List amount Y")
+                assertEquals(
+                    expected.rules.map {
+                        DecodedValue.CvmList.CvmRule(it.methodCode, it.applyNextIfFailed, it.conditionCode)
+                    },
+                    cvm.rules,
+                    "$where CVM List rules",
+                )
+            }
             ExpectedDecode.Sensitive -> {
                 assertTrue(value is DecodedValue.Sensitive, "$where expected Sensitive, got $value")
                 assertEquals("Sensitive(redacted)", value.toString(), "$where must not print its value")
