@@ -262,6 +262,26 @@ Trust the bytes over the summary. Verify against the primary spec. Make the unsa
 
 ---
 
+## What this demonstrates — EMV data-model fluency, honestly scoped
+
+EMV terminal and certification work rests on one foundation: reading the byte-level data model
+fluently, and trusting the bytes when the documentation is wrong. That foundation is exactly what
+Tagscope is — stated with its limits, because the honesty is the point.
+
+| What EMV terminal & certification work involves | What Tagscope shows | What it deliberately is *not* |
+|---|---|---|
+| Terminal development & field-level troubleshooting | Byte-level fluency in the EMV data model — BER-TLV parsing, ~40 core tags, and TVR / AIP / CID / IAC bit-fields decoded to plain English: the exact reading you do when a terminal declines in the field | A terminal or payment kernel — no live transaction execution |
+| Certification testing & defect resolution | The triage instinct cert work runs on — *trust the raw bytes over the published summary* (a real published-summary error is corrected and pinned in the tests) — plus golden vectors verified byte-for-byte against **EMVCo Book 3 v4.4** and mutation-tested | Certification experience — no payment-processor integration |
+| EMV transaction flows & terminal parameters | Recognizes the PDOL/CDOL a terminal fills for GPO / GENERATE AC, and fully decodes the AIP / CID / TVR action-analysis data and the IAC / AUC parameters themselves | The flow engine or a parameter-management system |
+| Java & Kotlin application development | Production **Kotlin/JVM**: idiomatic sealed types, **zero runtime dependencies**, **360 tests**, green CI, byte-verified against the spec | (The codebase is Kotlin on the JVM; Java interop is native but not exercised here) |
+| Cross-functional certification collaboration | Collaboration-ready habits: honestly-scoped claims, atomic reviewable commits, and docs a QA or cert partner can follow | Team/cross-functional experience — this is a solo project |
+
+**In one line:** this is the EMV data-model fluency and the byte-level verification discipline the
+work rests on — *not* certification experience. Stating that plainly is the honest starting line
+for the rest of the conversation.
+
+---
+
 ## Security & PCI posture
 
 - **Masked by default, everywhere.** All rendering flows through one function that redacts
