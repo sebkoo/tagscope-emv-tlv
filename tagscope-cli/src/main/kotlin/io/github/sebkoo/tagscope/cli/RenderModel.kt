@@ -24,6 +24,7 @@ import io.github.sebkoo.tagscope.tlv.TlvNode
  * @property value the human rendering of the value, or `null` for a constructed node or a masked one.
  * @property valueHex the raw value octets as hex, or `null` when withheld (masked) or constructed.
  * @property meanings decoded bit-field meanings, one per entry; empty for everything else.
+ * @property dolEntries a Data Object List's (tag, name, length) requests, or `null` for a non-DOL.
  * @property decodeNote why a non-sensitive value would not decode, or `null`.
  */
 internal class RenderNode(
@@ -37,8 +38,19 @@ internal class RenderNode(
     val value: String?,
     val valueHex: String?,
     val meanings: List<String>,
+    val dolEntries: List<DolEntryView>?,
     val decodeNote: String?,
     val children: List<RenderNode>,
+)
+
+/**
+ * A Data Object List entry ready to render: the tag as hex, the dictionary name (looked up here at
+ * render time, never stored in the decoded value), and how many octets the terminal must supply.
+ */
+internal class DolEntryView(
+    val tagHex: String,
+    val name: String,
+    val length: Int,
 )
 
 /** Shown in a value column in place of a masked value, in the text tree. */
@@ -110,7 +122,8 @@ private fun renderPrimitive(
     rawHex: String,
 ): RenderNode {
     var meanings: List<String> = emptyList()
-    val value =
+    var dolEntries: List<DolEntryView>? = null
+    val value: String? =
         when (decoded) {
             is DecodedValue.Digits -> decoded.digits
             is DecodedValue.Text -> decoded.text
@@ -121,16 +134,33 @@ private fun renderPrimitive(
                 meanings = decoded.selections.map { "${it.label}: ${it.meaning}" } + decoded.flags.map { it.meaning }
                 rawHex
             }
+            is DecodedValue.Dol -> {
+                // A DOL is a list of requests, not a value: its entries render as sub-lines, and the
+                // value column is left empty. Names are looked up here, at render time, not stored.
+                dolEntries = decoded.entries.map(::dolEntryView)
+                null
+            }
             is DecodedValue.Track2 -> track2(decoded)
-            // A DOL decodes to its (tag, length) entries; rendering those as sub-lines lands in the
-            // next commit. Until then it shows its octets, as it did when it was opaque RawBinary.
-            is DecodedValue.Dol -> rawHex
             // Unreachable for a primitive: Constructed is handled above and Sensitive was unwrapped.
             // Fall back to something that reveals nothing, so an invariant slip cannot leak.
             is DecodedValue.Constructed -> rawHex
             is DecodedValue.Sensitive -> MASK_TREE
         }
-    return primitive(node, name, sensitive, value = value, valueHex = rawHex, meanings = meanings)
+    return primitive(
+        node,
+        name,
+        sensitive,
+        value = value,
+        // A DOL carries no value octets to show, so it emits its entries in place of a hex value.
+        valueHex = if (dolEntries != null) null else rawHex,
+        meanings = meanings,
+        dolEntries = dolEntries,
+    )
+}
+
+private fun dolEntryView(entry: DecodedValue.Dol.Entry): DolEntryView {
+    val info = (TagDictionary.lookup(entry.tag) as? TagLookup.Known)?.info
+    return DolEntryView(entry.tag.hex, info?.name ?: UNKNOWN_TAG_NAME, entry.length)
 }
 
 private fun track2(value: DecodedValue.Track2): String =
@@ -179,6 +209,7 @@ private fun leafless(
         value = null,
         valueHex = null,
         meanings = emptyList(),
+        dolEntries = null,
         decodeNote = null,
         children = children,
     )
@@ -187,9 +218,10 @@ private fun primitive(
     node: TlvNode,
     name: String,
     sensitive: Boolean,
-    value: String,
-    valueHex: String,
+    value: String?,
+    valueHex: String?,
     meanings: List<String> = emptyList(),
+    dolEntries: List<DolEntryView>? = null,
     decodeNote: String? = null,
 ): RenderNode =
     RenderNode(
@@ -203,6 +235,7 @@ private fun primitive(
         value = value,
         valueHex = valueHex,
         meanings = meanings,
+        dolEntries = dolEntries,
         decodeNote = decodeNote,
         children = emptyList(),
     )

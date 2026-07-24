@@ -39,8 +39,18 @@ internal fun renderTree(nodes: List<RenderNode>): String {
             for (meaning in node.meanings) {
                 append("  ".repeat(row.depth)).append(MEANING_PREFIX).append(meaning).append('\n')
             }
+            // A DOL's entries print one per line beneath it, the same indented form the bit-field
+            // meanings take: the entry is the tag, its name, and the octet count the terminal supplies.
+            for (entry in node.dolEntries.orEmpty()) {
+                append("  ".repeat(row.depth)).append(MEANING_PREFIX).append(dolEntryLine(entry)).append('\n')
+            }
         }
     }.trimEnd('\n')
+}
+
+private fun dolEntryLine(entry: DolEntryView): String {
+    val unit = if (entry.length == 1) "byte" else "bytes"
+    return "${entry.tagHex}  ${entry.name}  (${entry.length} $unit)"
 }
 
 private class Row(

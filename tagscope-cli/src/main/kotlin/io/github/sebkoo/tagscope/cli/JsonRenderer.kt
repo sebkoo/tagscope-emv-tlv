@@ -86,6 +86,21 @@ private fun scalarFields(node: RenderNode): List<Pair<String, String>> =
             val meanings = node.meanings.joinToString(prefix = "[", postfix = "]", separator = ", ") { jsonString(it) }
             add("meanings" to meanings)
         }
+        if (node.dolEntries != null) {
+            add("entries" to dolEntriesJson(node.dolEntries))
+        }
+    }
+
+/** A DOL's entries as a JSON array of `{tag, name, length}`, in wire order. */
+private fun dolEntriesJson(entries: List<DolEntryView>): String =
+    entries.joinToString(prefix = "[", postfix = "]", separator = ", ") { entry ->
+        buildString {
+            append('{')
+            append(jsonString("tag")).append(": ").append(jsonString(entry.tagHex)).append(", ")
+            append(jsonString("name")).append(": ").append(jsonString(entry.name)).append(", ")
+            append(jsonString("length")).append(": ").append(entry.length)
+            append('}')
+        }
     }
 
 private fun classLabel(tagClass: TagClass): String =
