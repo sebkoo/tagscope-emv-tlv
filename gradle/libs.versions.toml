@@ -2,10 +2,14 @@
 kotlin = "2.4.10"
 ktlint = "14.2.0"
 junit = "6.1.2"
+vanniktech-publish = "0.37.0"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }
+# Build-time only: packages the POM, sources/javadoc jars, GPG signing and the Central Portal
+# upload for :tagscope-lib. Not a runtime dependency and never ships in the artifact.
+maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "vanniktech-publish" }
 
 [libraries]
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
