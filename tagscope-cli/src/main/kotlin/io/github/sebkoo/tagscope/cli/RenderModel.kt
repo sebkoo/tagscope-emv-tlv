@@ -122,6 +122,9 @@ private fun renderPrimitive(
                 rawHex
             }
             is DecodedValue.Track2 -> track2(decoded)
+            // A DOL decodes to its (tag, length) entries; rendering those as sub-lines lands in the
+            // next commit. Until then it shows its octets, as it did when it was opaque RawBinary.
+            is DecodedValue.Dol -> rawHex
             // Unreachable for a primitive: Constructed is handled above and Sensitive was unwrapped.
             // Fall back to something that reveals nothing, so an invariant slip cannot leak.
             is DecodedValue.Constructed -> rawHex
@@ -154,6 +157,7 @@ private fun decodeNote(error: DecodeError): String =
         is DecodeError.Track2PanTooLong -> "Track 2 PAN too long"
         is DecodeError.Track2MissingFields -> "Track 2 missing fields"
         is DecodeError.Track2MonthOutOfRange -> "Track 2 month out of range"
+        is DecodeError.MalformedDol -> "malformed DOL entry"
     }
 
 private fun leafless(

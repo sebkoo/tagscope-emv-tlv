@@ -112,8 +112,8 @@ internal val VECTORS: List<GoldenVector> =
                     ),
                 ),
         ),
-        // 2 - Visa AID FCI with PDOL. 84 AID is hex; 9F38 is a two-octet tag whose value is a DOL,
-        // opaque here (no DOL-entry decoder yet). 87 is RawBinary despite its "bit field" note.
+        // 2 - Visa AID FCI with PDOL. 84 AID is hex; 9F38 decodes to its four PDOL (tag, length)
+        // entries — (9F33,3)(9F1A,2)(9F35,1)(9F40,5). 87 is RawBinary despite its "bit field" note.
         GoldenVector(
             name = "Visa AID FCI + PDOL",
             hexFile = "02-visa-fci-pdol.hex",
@@ -129,13 +129,19 @@ internal val VECTORS: List<GoldenVector> =
                         0x1D,
                         leaf("50", 0x04, text("VISA"), value = "56495341"),
                         leaf("87", 0x01, raw("01"), value = "01"),
-                        leaf("9F38", 0x0C, raw("9F33039F1A029F35019F4005"), value = "9F33039F1A029F35019F4005"),
+                        leaf(
+                            "9F38",
+                            0x0C,
+                            dol("9F33" to 3, "9F1A" to 2, "9F35" to 1, "9F40" to 5),
+                            value = "9F33039F1A029F35019F4005",
+                        ),
                         leaf("5F2D", 0x02, text("de"), value = "6465"),
                     ),
                 ),
         ),
         // 3 - READ RECORD, long-form length 81 8C. PAN masked by default; dates keep a two-digit
-        // year; DOLs and the CVM List stay opaque; the IACs are TVR-shaped bit fields; 9F4A Unknown.
+        // year; the DOLs 8C/8D decode to their (tag, length) entries and the CVM List 8E stays
+        // opaque; the IACs are TVR-shaped bit fields; 9F4A Unknown.
         GoldenVector(
             name = "READ RECORD",
             hexFile = "03-read-record.hex",
@@ -153,8 +159,31 @@ internal val VECTORS: List<GoldenVector> =
                     leaf("5A", 0x08, ExpectedDecode.Sensitive),
                     leaf("5F34", 0x01, digits("02"), value = "02"),
                     leaf("9F07", 0x02, bits(flags = AUC_FF00), value = "FF00"),
-                    leaf("8C", 0x21, rawOpaque(0x21)),
-                    leaf("8D", 0x0C, rawOpaque(0x0C)),
+                    leaf(
+                        "8C",
+                        0x21,
+                        dol(
+                            "9F02" to 6,
+                            "9F03" to 6,
+                            "9F1A" to 2,
+                            "95" to 5,
+                            "5F2A" to 2,
+                            "9A" to 3,
+                            "9C" to 1,
+                            "9F37" to 4,
+                            "9F35" to 1,
+                            "9F45" to 2,
+                            "9F4C" to 8,
+                            "9F34" to 3,
+                        ),
+                        value = "9F02069F03069F1A0295055F2A029A039C019F37049F35019F45029F4C089F3403",
+                    ),
+                    leaf(
+                        "8D",
+                        0x0C,
+                        dol("91" to 10, "8A" to 2, "95" to 5, "9F37" to 4, "9F4C" to 8),
+                        value = "910A8A0295059F37049F4C08",
+                    ),
                     leaf("8E", 0x14, rawOpaque(0x14)),
                     leaf("9F0D", 0x05, bits(flags = IAC_DEFAULT_BC50BC8800), value = "BC50BC8800"),
                     leaf("9F0E", 0x05, bits(flags = IAC_DENIAL_0000080000), value = "0000080000"),

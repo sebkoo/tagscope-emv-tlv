@@ -1,5 +1,6 @@
 package io.github.sebkoo.tagscope.decode
 
+import io.github.sebkoo.tagscope.tlv.TlvTag
 import java.util.Collections
 
 /**
@@ -316,6 +317,55 @@ public sealed interface DecodedValue {
 
             private const val HASH_FACTOR: Int = 31
         }
+    }
+
+    /**
+     * A Data Object List: the (tag, length) entries a terminal must fill in.
+     *
+     * The PDOL (`9F38`), CDOL1 (`8C`) and CDOL2 (`8D`) are lists of requests, not of values — each
+     * entry names a data element by [Entry.tag] and states how many octets, [Entry.length], the
+     * terminal must supply for it when it builds the GET PROCESSING OPTIONS or GENERATE AC command.
+     * There are no values here to decode: a DOL is the question, and the terminal's command is the
+     * answer.
+     *
+     * The entries are in wire order. A tag's name is not stored — it is looked up from the
+     * dictionary when the list is rendered, the same as any other tag — so this carries only what
+     * the octets state. None of it is cardholder data.
+     *
+     * Not a data class, for the reason [BitField] is not: the list is copied in and wrapped so a
+     * caller cannot reach back into it, and [equals] compares the entries in order.
+     *
+     * EMV Book 3 §5.4, Rules for Using a Data Object List (DOL).
+     */
+    public class Dol(
+        entries: List<Entry>,
+    ) : DecodedValue {
+        /** The (tag, length) requests, in wire order. */
+        public val entries: List<Entry> = Collections.unmodifiableList(entries.toList())
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Dol) return false
+            return entries == other.entries
+        }
+
+        override fun hashCode(): Int = entries.hashCode()
+
+        /** The tags and lengths, which are the point of decoding a DOL and carry nothing sensitive. */
+        override fun toString(): String =
+            entries.joinToString(prefix = "Dol(", postfix = ")") { "${it.tag.hex}:${it.length}" }
+
+        /**
+         * One DOL entry: a request for [length] octets of the data element named by [tag].
+         *
+         * A request, with no value of its own — the value is what the terminal fills in later. The
+         * [tag] is a full BER-TLV tag, so it may be multi-byte; [length] is the octet count the DOL
+         * states, read as a BER-TLV length so the long form is admitted though a DOL rarely needs it.
+         */
+        public data class Entry(
+            public val tag: TlvTag,
+            public val length: Int,
+        )
     }
 
     /**

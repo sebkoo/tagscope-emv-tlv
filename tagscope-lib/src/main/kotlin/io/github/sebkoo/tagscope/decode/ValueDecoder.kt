@@ -3,6 +3,8 @@ package io.github.sebkoo.tagscope.decode
 import io.github.sebkoo.tagscope.tags.TagFormat
 import io.github.sebkoo.tagscope.tags.TagInfo
 import io.github.sebkoo.tagscope.tlv.TlvNode
+import io.github.sebkoo.tagscope.tlv.TlvReader
+import io.github.sebkoo.tagscope.tlv.TlvResult
 import io.github.sebkoo.tagscope.tlv.TlvTag
 
 /**
@@ -85,9 +87,10 @@ public object ValueDecoder {
 
     /**
      * `b`, which is octets unless the tag says the octets have a structure worth reading: Track 2
-     * (`57`), the DF Name (`84`) when it is textual, or one of the bit-field tags [BitFieldTable]
-     * carries. A cryptogram (`9F26`) and the Issuer Application Data (`9F10`) match none and go no
-     * further, opaque to this library by design rather than merely undecoded.
+     * (`57`), the DF Name (`84`) when it is textual, a Data Object List (`9F38`/`8C`/`8D`), or one
+     * of the bit-field tags [BitFieldTable] carries. A cryptogram (`9F26`) and the Issuer
+     * Application Data (`9F10`) match none and go no further, opaque to this library by design
+     * rather than merely undecoded.
      */
     private fun binary(
         node: TlvNode,
@@ -96,12 +99,55 @@ public object ValueDecoder {
         when (node.tag) {
             TRACK2_TAG -> track2(node, value)
             DF_NAME_TAG -> dfName(value)
+            in DOL_TAGS -> dol(node, value)
             else ->
                 when (val spec = BitFieldTable.specFor(node.tag)) {
                     null -> DecodeResult.Success(DecodedValue.RawBinary(value))
                     else -> bitField(node, value, spec)
                 }
         }
+
+    /**
+     * A Data Object List (`9F38` PDOL, `8C` CDOL1, `8D` CDOL2): a run of (tag, length) entries with
+     * no values, naming the data elements a terminal must supply for GET PROCESSING OPTIONS or
+     * GENERATE AC. Each entry is a BER-TLV tag followed by a BER-TLV length, read with the very
+     * readers `TlvParser` uses — so a multi-byte tag and the long-form length are handled the same
+     * way here as anywhere else, though a DOL rarely needs either. No value octets follow a length:
+     * the length is a *request* for octets the terminal will supply, not a count present in the DOL.
+     *
+     * An empty value is an empty DOL, which is well-formed. A tag or length field that runs off the
+     * end, or a malformed tag, is [DecodeError.MalformedDol] pointing at the entry that failed —
+     * returned, never thrown, the same as every other decode.
+     */
+    private fun dol(
+        node: TlvNode,
+        value: ByteArray,
+    ): DecodeResult {
+        val entries = mutableListOf<DecodedValue.Dol.Entry>()
+        var offset = 0
+        while (offset < value.size) {
+            val tag =
+                when (val read = TlvReader.readTag(value, offset)) {
+                    is TlvResult.Failure -> return malformedDol(node, offset)
+                    is TlvResult.Success -> read.value
+                }
+            val lengthOffset = offset + tag.octetLength
+            val length =
+                when (val read = TlvReader.readLength(value, lengthOffset)) {
+                    is TlvResult.Failure -> return malformedDol(node, offset)
+                    is TlvResult.Success -> read.value
+                }
+            entries += DecodedValue.Dol.Entry(tag, length.value)
+            offset = lengthOffset + length.octetLength
+        }
+        return DecodeResult.Success(DecodedValue.Dol(entries))
+    }
+
+    /** A DOL entry that could not be read, named by its first octet in the parsed buffer. */
+    private fun malformedDol(
+        node: TlvNode,
+        entryOffset: Int,
+    ): DecodeResult = DecodeResult.Failure(DecodeError.MalformedDol(node.tag, node.valueOffset + entryOffset))
 
     /**
      * DF Name (`84`): the name of the selected file. Annex A formats it `b`, but the value is a
@@ -526,6 +572,14 @@ public object ValueDecoder {
 
     /** DF Name (`84`): `b` in Annex A, but textual for a PSE directory and binary for an AID. */
     private val DF_NAME_TAG: TlvTag = TlvTag(value = 0x84, octetLength = 1)
+
+    /** The Data Object Lists this library reads into (tag, length) entries: PDOL, CDOL1, CDOL2. */
+    private val DOL_TAGS: Set<TlvTag> =
+        setOf(
+            TlvTag(value = 0x9F38, octetLength = 2),
+            TlvTag(value = 0x8C, octetLength = 1),
+            TlvTag(value = 0x8D, octetLength = 1),
+        )
 
     /**
      * Longest each month can be, indexed from January. February is the common 28 here; the leap

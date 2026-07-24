@@ -186,4 +186,19 @@ public sealed class DecodeError {
         override val tag: TlvTag,
         override val offset: Int,
     ) : DecodeError()
+
+    /**
+     * A Data Object List (`9F38` PDOL, `8C` CDOL1, `8D` CDOL2) whose octets are not a clean run of
+     * (tag, length) entries: an entry's tag or length field runs past the end of the value, or the
+     * tag itself is malformed. A DOL carries no values, so the only way it fails is a truncated or
+     * malformed entry rather than a bad value.
+     *
+     * [offset] is the first identifier octet of the entry that could not be read, within the buffer
+     * that was parsed. A DOL is not cardholder data, but the coordinate is enough to find the entry,
+     * so no further octets are carried.
+     */
+    public data class MalformedDol(
+        override val tag: TlvTag,
+        override val offset: Int,
+    ) : DecodeError()
 }

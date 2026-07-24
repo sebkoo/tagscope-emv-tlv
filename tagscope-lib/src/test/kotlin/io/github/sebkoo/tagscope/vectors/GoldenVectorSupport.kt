@@ -136,6 +136,17 @@ internal sealed interface ExpectedDecode {
         val selections: List<Selection> = emptyList(),
     ) : ExpectedDecode
 
+    /** `DecodedValue.Dol` with exactly these (tag, length) entries, in wire order. */
+    data class Dol(
+        val entries: List<Entry>,
+    ) : ExpectedDecode {
+        /** One expected DOL entry: the tag as hex and the octet count it requests. */
+        data class Entry(
+            val tag: String,
+            val length: Int,
+        )
+    }
+
     /** `DecodedValue.Sensitive`; the default decode redacts and leaks nothing. */
     data object Sensitive : ExpectedDecode
 
@@ -166,6 +177,10 @@ internal fun rawOpaque(size: Int): ExpectedDecode = ExpectedDecode.RawOpaque(siz
 
 /** `DecodedValue.Text([text])`. */
 internal fun text(text: String): ExpectedDecode = ExpectedDecode.Text(text)
+
+/** `DecodedValue.Dol` with these (tag hex, length) entries, in wire order. */
+internal fun dol(vararg entries: Pair<String, Int>): ExpectedDecode =
+    ExpectedDecode.Dol(entries.map { (tag, length) -> ExpectedDecode.Dol.Entry(tag, length) })
 
 /** `DecodedValue.Digits([digits])`. */
 internal fun digits(digits: String): ExpectedDecode = ExpectedDecode.Digits(digits)

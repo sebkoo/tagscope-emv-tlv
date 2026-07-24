@@ -120,6 +120,14 @@ class GoldenVectorTest {
             is ExpectedDecode.Date ->
                 assertEquals(DecodedValue.Date(expected.yy, expected.mm, expected.dd), value, "$where date")
             is ExpectedDecode.Bits -> assertBitField(expected, node, value, where)
+            is ExpectedDecode.Dol -> {
+                val dol = value as? DecodedValue.Dol ?: fail("$where expected Dol, got $value")
+                assertEquals(
+                    expected.entries.map { it.tag to it.length },
+                    dol.entries.map { it.tag.hex to it.length },
+                    "$where DOL entries",
+                )
+            }
             ExpectedDecode.Sensitive -> {
                 assertTrue(value is DecodedValue.Sensitive, "$where expected Sensitive, got $value")
                 assertEquals("Sensitive(redacted)", value.toString(), "$where must not print its value")
