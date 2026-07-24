@@ -7,6 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/sebkoo/tagscope-emv-tlv/actions"><img alt="Build" src="https://github.com/sebkoo/tagscope-emv-tlv/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://central.sonatype.com/artifact/io.github.sebkoo/tagscope"><img alt="Maven Central" src="https://img.shields.io/maven-central/v/io.github.sebkoo/tagscope?label=Maven%20Central"></a>
   <img alt="Tests" src="https://img.shields.io/badge/tests-380%2B%20passing-brightgreen">
   <img alt="Runtime dependencies" src="https://img.shields.io/badge/runtime%20dependencies-0-success">
   <img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue">
@@ -191,12 +192,24 @@ cd tagscope-emv-tlv
 ./gradlew :tagscope-cli:run --args="6F15840E315041592E5359532E4444463031A503880101"
 ```
 
-**Use the library** (Maven Central coordinate — *planned*, once published):
+**Use the library** — published to Maven Central as `io.github.sebkoo:tagscope`:
+
+Gradle (Kotlin DSL):
 
 ```kotlin
 dependencies {
     implementation("io.github.sebkoo:tagscope:0.1.0")
 }
+```
+
+Maven:
+
+```xml
+<dependency>
+  <groupId>io.github.sebkoo</groupId>
+  <artifactId>tagscope</artifactId>
+  <version>0.1.0</version>
+</dependency>
 ```
 
 ```kotlin
@@ -270,7 +283,7 @@ The library and command-line tool are **done and fully tested**. Here's the whol
 | 12 | DOL parsing — PDOL/CDOL into typed (tag, length) entries | ✅ done |
 | 13 | CVM-List (`8E`) — amounts + cardholder-verification rules | ✅ done |
 | 14 | Wider tag & sensitive-field coverage (masking + named terminal tags) | ✅ done |
-| — | Publish to Maven Central | ⬜ planned |
+| — | Publish to Maven Central | ✅ Published to Maven Central |
 
 **380+ tests. Zero runtime dependencies. No real cardholder data anywhere in the repo.**
 
@@ -346,7 +359,7 @@ data, it does not by itself make a system PCI-compliant.
 
 The highest-leverage contribution is **adding a tag** to the dictionary — it's a single typed
 row, and the test harness does the rest. Bug reports with a hex vector that reproduces are gold.
-See `CONTRIBUTING.md` (coming with the first release).
+See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 
