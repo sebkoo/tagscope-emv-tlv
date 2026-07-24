@@ -19,6 +19,23 @@ class HelpVersionTest {
         assertTrue(outcome.stdout.startsWith("tagscope "), "the version line names the tool")
     }
 
+    /**
+     * Guards the defect where the generated version resource went stale and `--version` kept
+     * reporting a long-superseded number. Naming the tool is not enough: the number has to be the
+     * one the build was run at.
+     */
+    @Test
+    fun `--version prints the version the build was run at`() {
+        val expected =
+            checkNotNull(System.getProperty("tagscope.expected.version")) {
+                "the build must inject tagscope.expected.version; see tagscope-cli/build.gradle.kts"
+            }
+
+        val outcome = runCli(arrayOf("--version"), stdinMustNotBeRead)
+
+        assertEquals("tagscope $expected", outcome.stdout, "--version reports the project version")
+    }
+
     @Test
     fun `--help prints usage and exits successfully without reading input`() {
         val outcome = runCli(arrayOf("--help"), stdinMustNotBeRead)

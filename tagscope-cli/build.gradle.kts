@@ -28,6 +28,10 @@ application {
 val projectVersion = version.toString()
 val generateVersionProperties by tasks.registering {
     val outputDir = layout.buildDirectory.dir("generated/version")
+    // The version is the task's only input. Without it declared, a task that has outputs and no
+    // inputs is up-to-date forever, and the generated number silently keeps the value it had when
+    // the build directory was first populated.
+    inputs.property("version", projectVersion)
     outputs.dir(outputDir)
     doLast {
         val file = outputDir.get().file("tagscope-version.properties").asFile
@@ -39,4 +43,6 @@ sourceSets["main"].resources.srcDir(generateVersionProperties)
 
 tasks.test {
     useJUnitPlatform()
+    // Lets the test suite assert that --version reports the version this build was run at.
+    systemProperty("tagscope.expected.version", projectVersion)
 }
