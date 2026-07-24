@@ -104,10 +104,12 @@ class TagDictionaryTest {
     }
 
     @Test
-    fun `the PAN and Track 2 are the only sensitive entries`() {
+    fun `the sensitive entries are the card-data and PII tags masked by default`() {
         val sensitive = TagDictionary.entries.filter { it.isSensitive }.map { it.tag.hex }
 
-        assertEquals(listOf("57", "5A"), sensitive.sorted())
+        // Track 1 (56), Track 2 (57), PAN (5A), Cardholder Name (5F20), PIN (99), and the track
+        // discretionary fields (9F1F, 9F20). Anything a real card record could leak is masked.
+        assertEquals(listOf("56", "57", "5A", "5F20", "99", "9F1F", "9F20"), sensitive.sorted())
     }
 
     @Test
@@ -195,8 +197,10 @@ private val EXPECTED_NOTES: Map<String, String> =
     mapOf(
         "4F" to "the card's AID",
         "50" to "letters, digits and space",
+        "56" to "sensitive, so kept opaque like 57",
         "57" to "a D nibble follows the PAN",
         "5A" to "F-padded",
+        "5F20" to "PII, kept opaque so masking is total",
         "5F24" to "YYMMDD",
         "5F25" to "YYMMDD",
         "5F28" to "ISO 3166 numeric",
@@ -244,9 +248,10 @@ private val EXPECTED: List<Expected> =
     listOf(
         Expected("4F", "Application Dedicated File (ADF) Name", APPLICATION, false, BINARY, 5, 16),
         Expected("50", "Application Label", APPLICATION, false, ALPHANUMERIC_SPECIAL, 1, 16),
+        Expected("56", "Track 1 Data", APPLICATION, false, BINARY, 0, 76, true),
         Expected("57", "Track 2 Equivalent Data", APPLICATION, false, BINARY, 0, 19, true),
         Expected("5A", "Application Primary Account Number (PAN)", APPLICATION, false, COMPRESSED_NUMERIC, 0, 10, true),
-        Expected("5F20", "Cardholder Name", APPLICATION, false, ALPHANUMERIC_SPECIAL, 2, 26),
+        Expected("5F20", "Cardholder Name", APPLICATION, false, BINARY, 2, 26, true),
         Expected("5F24", "Application Expiration Date", APPLICATION, false, NUMERIC, 3, 3),
         Expected("5F25", "Application Effective Date", APPLICATION, false, NUMERIC, 3, 3),
         Expected("5F28", "Issuer Country Code", APPLICATION, false, NUMERIC, 2, 2),
@@ -267,6 +272,16 @@ private val EXPECTED: List<Expected> =
         Expected("8E", "Cardholder Verification Method (CVM) List", CONTEXT_SPECIFIC, false, BINARY, 10, 252),
         Expected("94", "Application File Locator (AFL)", CONTEXT_SPECIFIC, false, VAR, 0, 252),
         Expected("95", "Terminal Verification Results", CONTEXT_SPECIFIC, false, BINARY, 5, 5),
+        Expected(
+            "99",
+            "Transaction Personal Identification Number (PIN) Data",
+            CONTEXT_SPECIFIC,
+            false,
+            BINARY,
+            0,
+            252,
+            true,
+        ),
         Expected("9A", "Transaction Date", CONTEXT_SPECIFIC, false, NUMERIC, 3, 3),
         Expected("9C", "Transaction Type", CONTEXT_SPECIFIC, false, NUMERIC, 1, 1),
         Expected("9F02", "Amount, Authorised (Numeric)", CONTEXT_SPECIFIC, false, NUMERIC, 6, 6),
@@ -277,6 +292,8 @@ private val EXPECTED: List<Expected> =
         Expected("9F0F", "Issuer Action Code - Online", CONTEXT_SPECIFIC, false, BINARY, 5, 5),
         Expected("9F10", "Issuer Application Data", CONTEXT_SPECIFIC, false, BINARY, 0, 32),
         Expected("9F1A", "Terminal Country Code", CONTEXT_SPECIFIC, false, NUMERIC, 2, 2),
+        Expected("9F1F", "Track 1 Discretionary Data", CONTEXT_SPECIFIC, false, BINARY, 0, 252, true),
+        Expected("9F20", "Track 2 Discretionary Data", CONTEXT_SPECIFIC, false, COMPRESSED_NUMERIC, 0, 252, true),
         Expected("9F26", "Application Cryptogram", CONTEXT_SPECIFIC, false, BINARY, 8, 8),
         Expected("9F27", "Cryptogram Information Data", CONTEXT_SPECIFIC, false, BINARY, 1, 1),
         Expected("9F34", "Cardholder Verification Method (CVM) Results", CONTEXT_SPECIFIC, false, BINARY, 3, 3),

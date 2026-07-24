@@ -12,7 +12,7 @@ import org.junit.jupiter.api.assertThrows
  * The tolerated run is stripped and reported rather than either rejected or silently swallowed, so
  * every case here pins both halves: the text that came out, and what was taken off to get it.
  *
- * Hand-written values only. `5F20` is a cardholder name in EMV; the one used here is not a person.
+ * Hand-written values only. `50` is an application label in EMV; the values here are not real cards.
  */
 class TextDecodeTest {
     @Test
@@ -79,15 +79,15 @@ class TextDecodeTest {
 
     @Test
     fun `ans keeps its trailing spaces, which the Common Character Set admits`() {
-        // 5F20: value at offset 3. "JANE DOE  ", padded by the card and conformant as written.
-        val name = decode("5F200A4A414E4520444F452020").expectValue()
+        // 50, an application label (ans): value at offset 2. "JANE DOE  ", padded and conformant.
+        val name = decode("500A4A414E4520444F452020").expectValue()
 
         assertEquals(Text("JANE DOE  "), name)
     }
 
     @Test
     fun `ans admits punctuation as well`() {
-        assertEquals(Text("J. DOE"), decode("5F20064A2E20444F45").expectValue())
+        assertEquals(Text("J. DOE"), decode("50064A2E20444F45").expectValue())
     }
 
     @Test
@@ -98,8 +98,8 @@ class TextDecodeTest {
             decode("5006544553540000").expectValue(),
         )
         assertEquals(
-            Text("JANE", TextPadding.Stripped(offset = 7, octets = listOf(0x00))),
-            decode("5F20054A414E4500").expectValue(),
+            Text("JANE", TextPadding.Stripped(offset = 6, octets = listOf(0x00))),
+            decode("50054A414E4500").expectValue(),
         )
     }
 

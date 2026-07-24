@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/sebkoo/tagscope-emv-tlv/actions"><img alt="Build" src="https://github.com/sebkoo/tagscope-emv-tlv/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="Tests" src="https://img.shields.io/badge/tests-360%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-380%2B%20passing-brightgreen">
   <img alt="Runtime dependencies" src="https://img.shields.io/badge/runtime%20dependencies-0-success">
   <img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue">
   <br>
@@ -187,8 +187,9 @@ when (val result = TlvParser.parse(bytes)) {
 - **Decodes ~40 core EMV tags** into typed values: numbers, dates, amounts, text, and the
   bit-fields that matter — **AIP, CID, TVR-shaped IACs, AUC**.
 - **Round-trips** — `encode(parse(x)) == x`, byte-for-byte. What it reads, it can write back.
-- **Masks sensitive data by default** — PAN (5A) and Track 2 (57) are redacted unless you pass
-  `--reveal`. See *Security* below for why this is impossible to get wrong.
+- **Masks sensitive data by default** — PAN, Track 1/2 (incl. discretionary), PIN, and cardholder
+  name are redacted unless you pass `--reveal`. See *Security* below for why this is impossible to
+  get wrong.
 - **A friendly CLI** — argument or stdin, a human tree or `--json`, clean exit codes, and error
   messages that never echo card data.
 - **Zero runtime dependencies.** Nothing to audit, nothing to update, nothing to break.
@@ -226,12 +227,12 @@ The library and command-line tool are **done and fully tested**. Here's the whol
 | 7 | `encode()` — the byte-exact inverse of parse | ✅ done |
 | 8 | **Golden vectors** — 6 real EMV records, byte-verified vs. Book 3 | ✅ done |
 | 9 | The **CLI** — decode, `--json`, PAN masking, `--reveal` | ✅ done |
-| 10 | Comprehensive CLI test suite (**360 tests total**) | ✅ done |
+| 10 | Comprehensive CLI test suite (**380+ tests total**) | ✅ done |
 | 11 | This README + first public release | 🔜 now |
 | 12+ | DOL parsing · CVM-List decoding · wider tag & sensitive-field coverage | ⬜ planned |
 | — | Publish to Maven Central | ⬜ planned |
 
-**360 tests. Zero runtime dependencies. No real cardholder data anywhere in the repo.**
+**380+ tests. Zero runtime dependencies. No real cardholder data anywhere in the repo.**
 
 ---
 
@@ -287,6 +288,10 @@ for the rest of the conversation.
 - **Masked by default, everywhere.** All rendering flows through one function that redacts
   sensitive tags *before* either the tree or the JSON writer ever sees the bytes — so no output
   path can print a full PAN without an explicit `--reveal`.
+- **PAN, Track 1/2, PIN — and cardholder name.** The PAN (5A) and both track images (56/57,
+  including the discretionary fields 9F1F/9F20) and the PIN (99) are masked as card data; the
+  cardholder name (5F20) is masked too, as a privacy default — it is PII, not card data, and
+  `--reveal` shows it when you need it.
 - **Keyed on the tag, not the decode.** A sensitive tag whose value fails to decode is *still*
   withheld, because masking is decided from the dictionary, not from the parsed result.
 - **No real cardholder data.** Every test vector is published EMVCo/OpenSCDP sample data. Error

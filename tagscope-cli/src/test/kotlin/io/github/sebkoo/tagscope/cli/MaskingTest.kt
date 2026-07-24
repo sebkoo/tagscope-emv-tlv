@@ -6,7 +6,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * The PAN must not appear in any default output, and must appear only when `--reveal` asks for it.
+ * No sensitive tag may appear in any default output; each must appear only when `--reveal` asks for
+ * it. The PAN is pinned in depth against golden vector 3; the other sensitive tags — Track 1, the
+ * cardholder name, the PIN, and the track-discretionary fields — are pinned as standalone fixtures.
  *
  * Golden vector 3 (the READ RECORD, `03-read-record.hex`) is the oracle. Its bytes are inlined here
  * because the library's test resources sit in another module and are not on this module's classpath;
@@ -61,6 +63,75 @@ class MaskingTest {
         assertEquals(ExitCode.SUCCESS, outcome.exitCode, "a well-formed record decodes successfully")
         assertTrue(outcome.stdout.contains("\"value\": \"$pan\""), "--reveal must show the PAN as the value")
         assertTrue(outcome.stdout.contains("\"hex\": \"$pan\""), "--reveal must show the PAN's raw hex")
+    }
+
+    // The PAN is not the only masked tag. Track 1 (56), the cardholder name (5F20), the PIN (99),
+    // and the two track-discretionary fields (9F1F, 9F20) all ride the same single masking site.
+    // Each case below is a standalone, obviously FAKE synthetic TLV — no real track, PIN, or name
+    // data ever enters the repository — whose raw value hex must be withheld from every default
+    // output and shown only under --reveal. valueHex is the raw octets, deterministic whatever the
+    // tag's format, so one string guards the decoded-value and raw-hex leak vectors at once.
+    private data class SensitiveCase(
+        val label: String,
+        val tlv: String,
+        val valueHex: String,
+    )
+
+    private val sensitiveCases =
+        listOf(
+            SensitiveCase("56 Track 1 Data", "5605FACE71DA7A", "FACE71DA7A"),
+            SensitiveCase(
+                "5F20 Cardholder Name",
+                "5F200F544553542043415244484F4C444552",
+                "544553542043415244484F4C444552",
+            ),
+            SensitiveCase("99 Transaction PIN Data", "9908DEADBEEFDEADBEEF", "DEADBEEFDEADBEEF"),
+            SensitiveCase("9F1F Track 1 Discretionary Data", "9F1F04C0DEFACE", "C0DEFACE"),
+            SensitiveCase("9F20 Track 2 Discretionary Data", "9F2003123456", "123456"),
+        )
+
+    @Test
+    fun `every sensitive tag is masked in the default text tree`() {
+        for (case in sensitiveCases) {
+            val outcome = runCli(arrayOf(case.tlv)) { "" }
+
+            assertEquals(ExitCode.SUCCESS, outcome.exitCode, "${case.label} decodes")
+            assertFalse(
+                outcome.stdout.contains(case.valueHex),
+                "${case.label}: the default tree must not print its value",
+            )
+            assertTrue(outcome.stdout.contains("masked"), "${case.label}: the node must show a masked marker")
+        }
+    }
+
+    @Test
+    fun `every sensitive tag is withheld from default JSON, value and hex`() {
+        for (case in sensitiveCases) {
+            val outcome = runCli(arrayOf("--json", case.tlv)) { "" }
+
+            assertEquals(ExitCode.SUCCESS, outcome.exitCode, "${case.label} decodes")
+            assertFalse(
+                outcome.stdout.contains(case.valueHex),
+                "${case.label}: default JSON must not print its value or hex",
+            )
+            assertTrue(
+                outcome.stdout.contains("\"sensitive\": true"),
+                "${case.label}: the node must be flagged sensitive",
+            )
+        }
+    }
+
+    @Test
+    fun `--reveal shows every sensitive tag's raw hex`() {
+        for (case in sensitiveCases) {
+            val outcome = runCli(arrayOf("--json", "--reveal", case.tlv)) { "" }
+
+            assertEquals(ExitCode.SUCCESS, outcome.exitCode, "${case.label} decodes")
+            assertTrue(
+                outcome.stdout.contains("\"hex\": \"${case.valueHex}\""),
+                "${case.label}: --reveal must show the raw hex",
+            )
+        }
     }
 
     @Test
