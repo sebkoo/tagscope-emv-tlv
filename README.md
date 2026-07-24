@@ -21,6 +21,15 @@
   <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen">
 </p>
 
+<p align="center">
+  <img alt="Tagscope CLI demo: decoding EMV bytes into a labelled tag tree, masking a PAN, and failing a lint check" src="docs/demo.gif" width="880">
+</p>
+
+<p align="center">
+  <em>Real output, every frame — the tree, the PAN masked by default, and a lint error that exits&nbsp;1.<br>
+  Scripted with <a href="https://github.com/charmbracelet/vhs">VHS</a>; regenerate it with <code>vhs docs/demo.tape</code>.</em>
+</p>
+
 ---
 
 ## What is this? (read this even if you've never seen code)
