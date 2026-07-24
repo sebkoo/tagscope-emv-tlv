@@ -706,7 +706,14 @@ public object ValueDecoder {
 
     /** Bits to a bit-field octet, and the meaning given a set bit the tables do not name. */
     private const val BITS_PER_OCTET: Int = 8
-    private const val RFU: String = "RFU"
+
+    /**
+     * The meaning a set bit — or an enum value — no rule names is surfaced under. Single-sourced
+     * from [DecodedValue.BitField.SetFlag.RFU_MEANING], the same constant
+     * [DecodedValue.BitField.SetFlag.isRfu] reads, so the marker this synthesises and the flag that
+     * detects it cannot drift.
+     */
+    private const val RFU: String = DecodedValue.BitField.SetFlag.RFU_MEANING
 
     /** Widens a JVM byte, which is signed, to the octet it actually is. */
     private const val UNSIGNED_OCTET: Int = 0xFF

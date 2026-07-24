@@ -59,4 +59,10 @@ internal object CliTestVectors {
 
     /** Malformed: 9F42 declares a 4-octet value but only 2 octets follow. */
     const val TRUNCATED_VALUE: String = "9F 42 04 06 43"
+
+    /** Lint negative: an FCI template (6F) with an A5 but no mandatory 84 -> ERROR fci-mandatory. */
+    const val FCI_MISSING_DF_NAME: String = "6F 02 A5 00"
+
+    /** Lint negative: an AIP (82) with byte-2 bit b2 set, a plain RFU position -> WARNING rfu-bits. */
+    const val AIP_RFU_BIT: String = "82 02 1C 02"
 }

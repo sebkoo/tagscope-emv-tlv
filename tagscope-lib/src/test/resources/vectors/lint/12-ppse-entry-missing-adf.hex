@@ -1,0 +1,6 @@
+# Lint vector - PPSE FCI whose directory entry (61) carries no ADF Name (4F)
+# Synthetic negative-test vector; no cardholder data.
+# 6F > 84 "2PAY.SYS.DDF01" + A5 > BF0C > 61 > 87 (priority), with no 4F to select an application.
+# EMV Book 1 v4.4 12.3.4 -> WARNING fci-mandatory (plus INFO unknown-tag for BF0C and 61, which the
+# dictionary does not name).
+6F 1A 84 0E 32 50 41 59 2E 53 59 53 2E 44 44 46 30 31 A5 08 BF 0C 05 61 03 87 01 01

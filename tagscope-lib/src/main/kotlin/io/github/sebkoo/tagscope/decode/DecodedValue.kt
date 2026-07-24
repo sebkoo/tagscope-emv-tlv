@@ -275,7 +275,25 @@ public sealed interface DecodedValue {
             public val byteIndex: Int,
             public val bit: Int,
             public val meaning: String,
-        )
+        ) {
+            /**
+             * Whether this is a plain Reserved-for-Future-Use bit: a position the spec reserves
+             * with no wording more specific than "RFU", surfaced by `ValueDecoder` as
+             * [RFU_MEANING]. A consistency checker reads this instead of testing the meaning
+             * string itself, so "is this RFU?" has one authoritative answer and no caller
+             * re-derives it from prose. A position reserved with specific wording — such as
+             * "Reserved for use by the EMV Contactless Specifications" — is not plain RFU and
+             * reads `false`. Derived, so it is excluded from [equals]/[hashCode], which stay the
+             * `byteIndex`/`bit`/`meaning` a decoded flag is compared by.
+             */
+            public val isRfu: Boolean
+                get() = meaning == RFU_MEANING
+
+            public companion object {
+                /** The meaning `ValueDecoder` gives a set bit that no rule names: a plain RFU bit. */
+                public const val RFU_MEANING: String = "RFU"
+            }
+        }
 
         /**
          * One multi-bit field and the value it selected.

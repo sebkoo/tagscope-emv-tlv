@@ -1,0 +1,5 @@
+# Lint vector - CVM List (8E) naming a reserved (payment-system) CVM method
+# Synthetic negative-test vector; no cardholder data.
+# 8E = 8 amount octets + one CV Rule (20 03). Method 0x20 falls in Annex C3's payment-system range
+# (0x20-0x2F), which is not a defined CVM -> WARNING cvm-well-formed.
+8E 0A 00 00 00 00 00 00 00 00 20 03

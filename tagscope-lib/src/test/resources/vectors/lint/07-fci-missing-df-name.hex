@@ -1,0 +1,4 @@
+# Lint vector - FCI template (6F) missing the mandatory DF Name (84)
+# Synthetic negative-test vector; no cardholder data. Well-formed BER-TLV, EMV-inconsistent.
+# 6F FCI > A5 (empty) only. EMV Book 1 requires both 84 and A5 in an FCI -> ERROR fci-mandatory.
+6F 02 A5 00

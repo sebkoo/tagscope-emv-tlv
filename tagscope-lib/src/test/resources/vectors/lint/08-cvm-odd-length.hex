@@ -1,0 +1,5 @@
+# Lint vector - CVM List (8E) with a trailing octet that cannot complete a CV Rule
+# Synthetic negative-test vector; no cardholder data.
+# 8E = 8 amount octets + 1 leftover. Book 3 v4.4 10.5: CV Rules are two octets each, so an odd
+# tail cannot pair -> WARNING cvm-well-formed.
+8E 09 00 00 00 00 00 00 00 00 42

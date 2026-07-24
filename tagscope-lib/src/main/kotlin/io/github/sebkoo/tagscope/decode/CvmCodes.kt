@@ -35,6 +35,31 @@ public object CvmCodes {
     public fun condition(code: Int): String = CONDITIONS[code] ?: unknown(code)
 
     /**
+     * How Annex C3 classifies a CVM method code — whether it names a concrete verification method
+     * or falls in one of the reserved ranges. The single, range-based source of truth a consistency
+     * checker reads instead of matching the [method] name string, so the ranges live in one place
+     * and cannot drift from the names [METHODS] gives them.
+     *
+     * The code is the six low bits `b6..b1` of a CVM Code byte, `0x00..0x3F` — the same value
+     * [DecodedValue.CvmList.CvmRule.methodCode] carries. [DEFINED] are the methods Book 3 v4.4,
+     * Annex C3 Table 43 assigns outright — `0x00..0x0F` (fail, the PIN methods, and the biometric
+     * CVMs), `0x1E` (Signature) and `0x1F` (No CVM required) — plus `0x3F`, which Book 4 v4.4,
+     * Annex A4 defines as "No CVM performed" (overriding Table 43's "not available"), exactly the
+     * override [METHODS] already applies. The rest are reserved: `0x10..0x1D` for future use by the
+     * specification ([RFU]), `0x20..0x2F` for the payment systems ([PAYMENT_SYSTEM]) and
+     * `0x30..0x3E` for the issuer ([ISSUER]). A value outside `0x00..0x3F` is not a method code at
+     * all and is reported [RFU], the same fallback [method] takes for a code outside its domain.
+     */
+    public fun classifyMethod(code: Int): CvmMethodClass =
+        when (code) {
+            in 0x00..0x0F, 0x1E, 0x1F, 0x3F -> CvmMethodClass.DEFINED
+            in 0x10..0x1D -> CvmMethodClass.RFU
+            in 0x20..0x2F -> CvmMethodClass.PAYMENT_SYSTEM
+            in 0x30..0x3E -> CvmMethodClass.ISSUER
+            else -> CvmMethodClass.RFU
+        }
+
+    /**
      * CVM Codes keyed by `b6..b1`. Book 3 v4.4, Annex C3, Table 43; `0x3F` is Book 4 v4.4, Annex A4's
      * "No CVM performed", which overrides Table 43's "not available".
      */
@@ -86,4 +111,20 @@ public object CvmCodes {
         val hex = code.toString(radix = 16).uppercase().padStart(2, '0')
         return "RFU/unknown (0x$hex)"
     }
+}
+
+/**
+ * How Annex C3 classifies a CVM method code; see [CvmCodes.classifyMethod].
+ *
+ * [DEFINED] names a concrete verification method Book 3 assigns. The other three are the reserved
+ * ranges: [RFU] reserved for future use by the specification, [PAYMENT_SYSTEM] reserved for the
+ * individual payment systems, and [ISSUER] reserved for the issuer. A CVM List that names a method
+ * outside [DEFINED] is not itself malformed BER-TLV, but a terminal that cannot recognise the
+ * method is worth an analyst's attention — which is what a consistency checker uses this to flag.
+ */
+public enum class CvmMethodClass {
+    DEFINED,
+    RFU,
+    PAYMENT_SYSTEM,
+    ISSUER,
 }

@@ -1,0 +1,5 @@
+# Lint vector - AIP (82) with a Reserved-for-Future-Use bit set
+# Synthetic negative-test vector; no cardholder data.
+# 82 = 1C 02. Byte 2 bit b2 is a plain RFU position in EMV Book 3 v4.4 Annex C1 (Table 41), so a
+# set bit there -> WARNING rfu-bits.
+82 02 1C 02

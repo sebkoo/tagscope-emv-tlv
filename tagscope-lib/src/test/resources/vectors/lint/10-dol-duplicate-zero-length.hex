@@ -1,0 +1,5 @@
+# Lint vector - DOL (9F38 PDOL) with a duplicate tag and a zero-length entry
+# Synthetic negative-test vector; no cardholder data.
+# 9F38 value = (9F1A, 02)(9F1A, 00): 9F1A is named twice, and the second entry requests zero
+# octets. EMV Book 3 v4.4 5.4 -> two WARNING dol-entries (zero-length, then duplicate).
+9F 38 06 9F 1A 02 9F 1A 00

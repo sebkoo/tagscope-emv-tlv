@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/sebkoo/tagscope-emv-tlv/actions"><img alt="Build" src="https://github.com/sebkoo/tagscope-emv-tlv/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://central.sonatype.com/artifact/io.github.sebkoo/tagscope"><img alt="Maven Central" src="https://img.shields.io/maven-central/v/io.github.sebkoo/tagscope?label=Maven%20Central"></a>
-  <img alt="Tests" src="https://img.shields.io/badge/tests-380%2B%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-420%2B%20passing-brightgreen">
   <img alt="Runtime dependencies" src="https://img.shields.io/badge/runtime%20dependencies-0-success">
   <img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue">
   <br>
@@ -182,6 +182,153 @@ $ tagscope --json 6F15840E315041592E5359532E4444463031A503880101
 
 ---
 
+## Validate, don't just decode
+
+Decoding tells you what the bytes *say*. A certification run needs to know whether what they say is
+*self-consistent* — mandatory tags present, reserved bits clear, lists well-formed. `tagscope lint`
+runs a set of spec-cited EMV rules over the decoded tree and reports what it finds, exiting non-zero
+on any error so it can gate a script or a CI step the way a real cert check does.
+
+Take a Cardholder Verification Method List that decodes without a murmur:
+
+```console
+$ tagscope 8E0A00000000000000002003
+
+8E  Cardholder Verification Method (CVM) List  [10]
+      amounts: X=0  Y=0
+      - Reserved for use by the individual payment systems — If terminal supports the CVM (else fail)
+```
+
+It parses. But that method code, `0x20`, sits in Annex C3's payment-system-reserved range — not a
+CVM a terminal is required to recognise. The linter says so, and names the rule and the tag:
+
+```console
+$ tagscope lint 8E0A00000000000000002003
+
+1 finding: 1 warning
+
+WARNING  cvm-well-formed  8E  CVM List (8E) names method 0x20, which is reserved for the payment systems, not a defined CVM
+```
+
+A *truncated* list — an odd octet where a two-byte CV Rule should be, exactly what a short read or
+an erased record leaves behind — is caught before it ever reaches a kernel:
+
+```console
+$ tagscope lint 8E09000000000000000042
+
+1 finding: 1 warning
+
+WARNING  cvm-well-formed  8E  CVM List (8E) has a trailing octet that cannot complete a two-octet CV Rule
+```
+
+A missing *mandatory* element is an **error**, and errors set the exit code — so a bad SELECT
+response fails a scripted check outright:
+
+```console
+$ tagscope lint 6F02A500
+
+1 finding: 1 error
+
+ERROR  fci-mandatory  6F  FCI template (6F) is missing mandatory DF Name (84)
+
+$ echo $?
+1
+```
+
+The rules today: mandatory FCI tags (`84`/`A5`, and a PPSE directory entry's `4F`); reserved bits
+set in a bit field (AIP, TVR, the Issuer Action Codes, AUC); DOL anomalies (a duplicate or
+zero-length entry, an unnamed tag); CVM List well-formedness and method codes; and any tag the
+dictionary doesn't name. Each rule cites the EMV clause it enforces. A finding names a tag and
+describes the defect — it **never** prints a value, so the report is safe to paste even for a record
+that carries a PAN.
+
+---
+
+## Anatomy of an EMV transaction
+
+The data objects Tagscope decodes are the messages of a chip/contactless transaction, exchanged in a
+fixed order. Here is the spine of one — each step decoded *and* linted, the way you would walk a
+trace looking for where it went wrong.
+
+**1 — PPSE.** The terminal selects the Proximity Payment System Environment (`2PAY.SYS.DDF01`) and
+the card answers with a directory of the applications it holds, each pointed at by an ADF Name
+(`4F`):
+
+```console
+$ tagscope 6F20840E325041592E5359532E4444463031A50EBF0C0B61094F07A0000000031010
+
+6F          File Control Information (FCI) Template              [32]
+  84        Dedicated File (DF) Name                             [14]  2PAY.SYS.DDF01
+  A5        File Control Information (FCI) Proprietary Template  [14]
+    BF0C    Unknown                                              [11]
+      61    Unknown                                              [9]
+        4F  Application Dedicated File (ADF) Name                [7]   A0000000031010
+
+$ tagscope lint 6F20840E325041592E5359532E4444463031A50EBF0C0B61094F07A0000000031010
+
+2 findings: 2 info
+
+INFO  unknown-tag  6F › A5 › BF0C       tag BF0C is not in the dictionary
+INFO  unknown-tag  6F › A5 › BF0C › 61  tag 61 is not in the dictionary
+```
+
+**2 — SELECT (AID).** The terminal selects the chosen application by its AID; the card returns its
+FCI — here carrying a **PDOL**, the card telling the terminal exactly what to pass to the next
+command:
+
+```console
+$ tagscope 6F288407A0000000031010A51D5004564953418701019F380C9F33039F1A029F35019F40055F2D026465
+
+6F        File Control Information (FCI) Template              [40]
+  84      Dedicated File (DF) Name                             [7]   A0000000031010
+  A5      File Control Information (FCI) Proprietary Template  [29]
+    50    Application Label                                    [4]   VISA
+    87    Application Priority Indicator                       [1]   01
+    9F38  Processing Options Data Object List (PDOL)           [12]
+          - 9F33  Terminal Capabilities  (3 bytes)
+          - 9F1A  Terminal Country Code  (2 bytes)
+          - 9F35  Terminal Type  (1 byte)
+          - 9F40  Additional Terminal Capabilities  (5 bytes)
+    5F2D  Language Preference                                  [2]   de
+```
+
+**3 — GET PROCESSING OPTIONS.** The terminal sends the PDOL-filled command; the card returns the
+**AIP** (what it supports) and the **AFL** (which records the terminal must now read):
+
+```console
+$ tagscope 770A82021C00940408010100
+
+77    Response Message Template Format 2  [10]
+  82  Application Interchange Profile     [2]   1C00
+        - Cardholder verification is supported
+        - Terminal risk management is to be performed
+        - Issuer authentication is supported
+  94  Application File Locator (AFL)      [4]   08010100
+```
+
+**4 — READ RECORD.** The terminal reads the records the AFL named. This is where the application
+data lives — the CVM List, the Issuer Action Codes, the (masked) PAN — and where the linter earns
+its keep on a real record, here surfacing the two CDOL tags this build does not yet name so an
+analyst can triage them:
+
+```console
+$ tagscope lint 70818C9F420206435F25031603015F24032011305A0855702956266780855F3401029F0702FF008C219F02069F03069F1A0295055F2A029A039C019F37049F35019F45029F4C089F34038D0C910A8A0295059F37049F4C088E14000000000000000042014403410342031E031F039F0D05BC50BC88009F0E0500000800009F0F05BC70BC98005F280206439F4A0182
+
+5 findings: 5 info
+
+INFO  dol-entries  70 › 8C › 9F45  DOL 8C names tag 9F45, which the dictionary does not describe
+INFO  dol-entries  70 › 8C › 9F4C  DOL 8C names tag 9F4C, which the dictionary does not describe
+INFO  dol-entries  70 › 8D › 91    DOL 8D names tag 91, which the dictionary does not describe
+INFO  dol-entries  70 › 8D › 8A    DOL 8D names tag 8A, which the dictionary does not describe
+INFO  dol-entries  70 › 8D › 9F4C  DOL 8D names tag 9F4C, which the dictionary does not describe
+```
+
+From here a real kernel runs the cryptography, the terminal risk management, and the action analysis
+that Tagscope deliberately does not — see *What this demonstrates* below. Tagscope's job is the data
+model underneath all of it: read every object, name every tag, and say when they don't add up.
+
+---
+
 ## Quick start
 
 **Run it now (from source):**
@@ -234,6 +381,9 @@ when (val result = TlvParser.parse(bytes)) {
   PROCESSING OPTIONS and GENERATE AC, unpacked into the typed `(tag, length)` entries each requests.
 - **Decodes the CVM List (`8E`)** — the two amount thresholds and every cardholder-verification
   rule, each rendered as its method and the condition under which it applies.
+- **Lints for EMV consistency** — a `tagscope lint` subcommand runs spec-cited rules over the
+  decoded tree (mandatory FCI tags, reserved bits, DOL and CVM-List anomalies, unknown tags),
+  reports findings by severity, and **exits non-zero on any error** so it can gate a script or CI.
 - **Round-trips** — `encode(parse(x)) == x`, byte-for-byte. What it reads, it can write back.
 - **Masks sensitive data by default** — PAN, Track 1/2 (incl. discretionary), PIN, and cardholder
   name are redacted unless you pass `--reveal`. See *Security* below for why this is impossible to
@@ -278,14 +428,15 @@ The library and command-line tool are **done and fully tested**. Here's the whol
 | 7 | `encode()` — the byte-exact inverse of parse | ✅ done |
 | 8 | **Golden vectors** — 6 real EMV records, byte-verified vs. Book 3 | ✅ done |
 | 9 | The **CLI** — decode, `--json`, PAN masking, `--reveal` | ✅ done |
-| 10 | Comprehensive CLI test suite (**380+ tests total**) | ✅ done |
+| 10 | Comprehensive CLI test suite (**420+ tests total**) | ✅ done |
 | 11 | This README + first public release | ✅ done |
 | 12 | DOL parsing — PDOL/CDOL into typed (tag, length) entries | ✅ done |
 | 13 | CVM-List (`8E`) — amounts + cardholder-verification rules | ✅ done |
 | 14 | Wider tag & sensitive-field coverage (masking + named terminal tags) | ✅ done |
+| 15 | **EMV consistency checker** (`lint`) — spec-cited rules + negative-test vectors | ✅ done |
 | — | Publish to Maven Central | ✅ Published to Maven Central |
 
-**380+ tests. Zero runtime dependencies. No real cardholder data anywhere in the repo.**
+**420+ tests. Zero runtime dependencies. No real cardholder data anywhere in the repo.**
 
 ---
 
@@ -325,9 +476,9 @@ Tagscope is — stated with its limits, because the honesty is the point.
 | What EMV terminal & certification work involves | What Tagscope shows | What it deliberately is *not* |
 |---|---|---|
 | Terminal development & field-level troubleshooting | Byte-level fluency in the EMV data model — BER-TLV parsing, ~40 core tags, and TVR / AIP / CID / IAC bit-fields decoded to plain English: the exact reading you do when a terminal declines in the field | A terminal or payment kernel — no live transaction execution |
-| Certification testing & defect resolution | The triage instinct cert work runs on — *trust the raw bytes over the published summary* (a real published-summary error is corrected and pinned in the tests) — plus golden vectors verified byte-for-byte against **EMVCo Book 3 v4.4** and mutation-tested | Certification experience — no payment-processor integration |
-| EMV transaction flows & terminal parameters | Decodes the PDOL/CDOL the terminal fills for GPO / GENERATE AC into their `(tag, length)` entries, and fully decodes the AIP / CID / TVR action-analysis data and the IAC / AUC parameters themselves | The flow engine or a parameter-management system |
-| Java & Kotlin application development | Production **Kotlin/JVM**: idiomatic sealed types, **zero runtime dependencies**, **380+ tests**, green CI, byte-verified against the spec | (The codebase is Kotlin on the JVM; Java interop is native but not exercised here) |
+| Certification testing & defect resolution | The triage instinct cert work runs on — *trust the raw bytes over the published summary* (a real published-summary error is corrected and pinned in the tests) — plus a `lint` consistency checker whose spec-cited rules are exercised by **deliberately-malformed negative-test vectors** that reproduce each defect, and golden vectors verified byte-for-byte against **EMVCo Book 3 v4.4** | Certification experience — no payment-processor integration |
+| EMV transaction flows & terminal parameters | Decodes the PDOL/CDOL the terminal fills for GPO / GENERATE AC into their `(tag, length)` entries, fully decodes the AIP / CID / TVR action-analysis data and the IAC / AUC parameters, and walks a whole PPSE → SELECT → GPO → READ RECORD flow, decoding **and** linting each step | The flow engine or a parameter-management system |
+| Java & Kotlin application development | Production **Kotlin/JVM**: idiomatic sealed types, **zero runtime dependencies**, **420+ tests**, green CI, byte-verified against the spec | (The codebase is Kotlin on the JVM; Java interop is native but not exercised here) |
 | Cross-functional certification collaboration | Collaboration-ready habits: honestly-scoped claims, atomic reviewable commits, and docs a QA or cert partner can follow | Team/cross-functional experience — this is a solo project |
 
 **In one line:** this is the EMV data-model fluency and the byte-level verification discipline the

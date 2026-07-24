@@ -1,0 +1,5 @@
+# Lint vector - well-formed PPSE FCI (2PAY.SYS.DDF01) carrying an ADF Name (4F)
+# Synthetic; no cardholder data. AID A0000000031010 is a published EMV test AID.
+# 6F > 84 "2PAY.SYS.DDF01" + A5 > BF0C > 61 > 4F AID. Lints with no ERROR/WARNING (BF0C and 61 are
+# reported INFO unknown-tag, which does not gate a run).
+6F 20 84 0E 32 50 41 59 2E 53 59 53 2E 44 44 46 30 31 A5 0E BF 0C 0B 61 09 4F 07 A0 00 00 00 03 10 10

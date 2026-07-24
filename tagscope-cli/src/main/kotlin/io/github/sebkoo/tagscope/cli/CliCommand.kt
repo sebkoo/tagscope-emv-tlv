@@ -3,11 +3,10 @@ package io.github.sebkoo.tagscope.cli
 /**
  * What the command line asked for: an action and how to render it.
  *
- * Deliberately tiny. There are four flags and one positional argument, so a hand-rolled parse is
- * smaller, and has fewer moving parts, than any dependency would add, and it keeps the whole repo
- * free of runtime dependencies — a selling point rather than an accident. A subcommand layer
- * (`decode` / `encode` / …) is a later addition: today decode is the only action, and the default
- * one, so a bare `tagscope <hex>` decodes.
+ * Deliberately tiny and hand-rolled — smaller, and with fewer moving parts, than any dependency
+ * would add, and it keeps the whole repo free of runtime dependencies, a selling point rather than
+ * an accident. Decode is the default action, so a bare `tagscope <hex>` decodes; `lint` is the one
+ * named subcommand, `tagscope lint <hex>`, and `lint` is not a hex string, so the two never collide.
  */
 internal sealed interface CliCommand {
     /** Print usage and exit successfully. */
@@ -26,6 +25,15 @@ internal sealed interface CliCommand {
         val reveal: Boolean,
     ) : CliCommand
 
+    /**
+     * Lint input: decode it and report EMV consistency findings. There is no reveal option — a
+     * finding names a tag and describes a defect, never a value, so nothing sensitive can reach the
+     * report. [hex] is the positional argument, or `null` to read standard input instead.
+     */
+    data class Lint(
+        val hex: String?,
+    ) : CliCommand
+
     /** The command line did not parse; [message] says why. */
     data class Invalid(
         val message: String,
@@ -39,6 +47,12 @@ internal sealed interface CliCommand {
  * guess.
  */
 internal fun parseArgs(args: Array<String>): CliCommand {
+    // The one subcommand: a leading `lint` selects it, and its remaining tokens parse on their own.
+    // `lint` is never a hex string, so this cannot shadow a decode of real input.
+    if (args.isNotEmpty() && args[0] == LINT_SUBCOMMAND) {
+        return parseLint(args.drop(1))
+    }
+
     var json = false
     var reveal = false
     var positional: String? = null
@@ -64,6 +78,33 @@ internal fun parseArgs(args: Array<String>): CliCommand {
 
     return CliCommand.Decode(hex = positional, json = json, reveal = reveal)
 }
+
+/**
+ * Parses the tokens after `lint`. The subcommand takes one optional positional (the hex, else
+ * stdin) and no options but `--help`/`-h`; `--json` and `--reveal` are decode's and are rejected
+ * here rather than silently ignored. The same card-data rule holds: a second positional, which
+ * could be a value, is described and never echoed.
+ */
+private fun parseLint(args: List<String>): CliCommand {
+    var positional: String? = null
+    var endOfOptions = false
+
+    for (arg in args) {
+        val looksLikeOption = !endOfOptions && arg.startsWith("-") && arg != "-"
+        when {
+            !endOfOptions && arg == "--" -> endOfOptions = true
+            looksLikeOption && (arg == "--help" || arg == "-h") -> return CliCommand.Help
+            looksLikeOption -> return CliCommand.Invalid(unknownOption(arg))
+            positional != null ->
+                return CliCommand.Invalid("unexpected extra argument; give one hex string (quoted) or pipe it on stdin")
+            else -> positional = arg
+        }
+    }
+
+    return CliCommand.Lint(hex = positional)
+}
+
+private const val LINT_SUBCOMMAND: String = "lint"
 
 /**
  * Names an unknown option, but only when it is plainly option-shaped — letters and dashes. A token

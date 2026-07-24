@@ -29,21 +29,28 @@ private fun reason(error: TlvError): String =
 /** The `--help` text. Static, so no card data can reach it. */
 internal fun helpText(): String =
     """
-    Usage: tagscope [options] [hex]
+    Usage:
+      tagscope [options] [hex]     Decode a BER-TLV string into a labelled, nested tag tree.
+      tagscope lint [hex]          Check a BER-TLV string for EMV consistency defects.
 
-    Decode an EMV BER-TLV string into a labelled, nested tag tree. The hex may be given as the
-    argument, or piped on standard input when no argument is present. Whitespace in the input is
-    ignored, so a trace pasted across several lines decodes the same as one unbroken run.
+    The hex may be given as the argument, or piped on standard input when no argument is present.
+    Whitespace in the input is ignored, so a trace pasted across several lines is read the same as
+    one unbroken run.
 
-    Options:
+    Options (decode):
       --json          Emit the decode as JSON instead of the text tree.
       --reveal        Show sensitive values (PAN, Track 2) in full. Off by default: they are masked.
       -h, --help      Show this help and exit.
       --version       Show the version and exit.
 
+    lint reports findings by severity and exits non-zero when any ERROR is found, so it can gate a
+    script or CI step. A finding names a tag and describes the defect; it never prints a value, and
+    lint takes no --reveal.
+
     Examples:
       tagscope 6F15840E315041592E5359532E4444463031A503880101
       echo 6F15840E31504159... | tagscope --json
+      tagscope lint 6F20840E325041592E5359532E4444463031A50EBF0C0B61094F07A0000000031010
 
     A PAN and Track 2 Equivalent Data are masked by default; pass --reveal to display them.
     """.trimIndent()
