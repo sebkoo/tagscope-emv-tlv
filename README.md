@@ -94,6 +94,37 @@ $ tagscope 770A82021C00940408010100
   94  Application File Locator (AFL)      [4]   08010100
 ```
 
+**The lists a terminal fills** — a PDOL is not a value but a *request*: the card telling the
+terminal which objects to hand it, and how many octets each must be. Tagscope unpacks it into that
+request, name-resolved:
+
+```console
+$ tagscope 9F380C9F33039F1A029F35019F4005
+
+9F38  Processing Options Data Object List (PDOL)  [12]
+      - 9F33  Terminal Capabilities  (3 bytes)
+      - 9F1A  Terminal Country Code  (2 bytes)
+      - 9F35  Terminal Type  (1 byte)
+      - 9F40  Additional Terminal Capabilities  (5 bytes)
+```
+
+**Cardholder verification, spelled out** — the CVM List (`8E`) is a run of packed two-byte rules.
+Tagscope reads the amount thresholds and turns each rule into its method and the condition it fires
+under — exactly the "why did it ask for a PIN?" reading:
+
+```console
+$ tagscope 8E14000000000000000042014403410342031E031F03
+
+8E  Cardholder Verification Method (CVM) List  [20]
+      amounts: X=0  Y=0
+      - Enciphered PIN verified online — If unattended cash (else apply next)
+      - Enciphered PIN verification performed by ICC — If terminal supports the CVM (else apply next)
+      - Plaintext PIN verification performed by ICC — If terminal supports the CVM (else apply next)
+      - Enciphered PIN verified online — If terminal supports the CVM (else apply next)
+      - Signature — If terminal supports the CVM (else fail)
+      - No CVM required — If terminal supports the CVM (else fail)
+```
+
 **Card numbers are masked by default.** You have to *ask* to see one:
 
 ```console
@@ -186,6 +217,10 @@ when (val result = TlvParser.parse(bytes)) {
   "looks-constructed-but-isn't" trap).
 - **Decodes ~40 core EMV tags** into typed values: numbers, dates, amounts, text, and the
   bit-fields that matter — **AIP, CID, TVR-shaped IACs, AUC**.
+- **Decodes Data Object Lists** — the **PDOL** and **CDOL1/CDOL2** a terminal fills for GET
+  PROCESSING OPTIONS and GENERATE AC, unpacked into the typed `(tag, length)` entries each requests.
+- **Decodes the CVM List (`8E`)** — the two amount thresholds and every cardholder-verification
+  rule, each rendered as its method and the condition under which it applies.
 - **Round-trips** — `encode(parse(x)) == x`, byte-for-byte. What it reads, it can write back.
 - **Masks sensitive data by default** — PAN, Track 1/2 (incl. discretionary), PIN, and cardholder
   name are redacted unless you pass `--reveal`. See *Security* below for why this is impossible to
@@ -208,6 +243,9 @@ when (val result = TlvParser.parse(bytes)) {
 | `95` | Terminal Verification Results | primitive | 5-byte bit-field |
 | `9F27` | Cryptogram Information Data | primitive | `AAC` / `TC` / `ARQC` + reason |
 | `9F0D/0E/0F` | Issuer Action Codes | primitive | TVR-shaped bit-fields |
+| `9F38` | Processing Options DOL (PDOL) | primitive | list of `(tag, length)` entries |
+| `8C/8D` | Card Risk Management DOLs (CDOL1/2) | primitive | list of `(tag, length)` entries |
+| `8E` | Cardholder Verification Method List | primitive | amounts + CV rules → plain English |
 | `80` | Response Template (Format 1) | **primitive** | opaque — *does not* recurse |
 | `77` | Response Template (Format 2) | constructed | recurses into children |
 
@@ -228,8 +266,10 @@ The library and command-line tool are **done and fully tested**. Here's the whol
 | 8 | **Golden vectors** — 6 real EMV records, byte-verified vs. Book 3 | ✅ done |
 | 9 | The **CLI** — decode, `--json`, PAN masking, `--reveal` | ✅ done |
 | 10 | Comprehensive CLI test suite (**380+ tests total**) | ✅ done |
-| 11 | This README + first public release | 🔜 now |
-| 12+ | DOL parsing · CVM-List decoding · wider tag & sensitive-field coverage | ⬜ planned |
+| 11 | This README + first public release | ✅ done |
+| 12 | DOL parsing — PDOL/CDOL into typed (tag, length) entries | ✅ done |
+| 13 | CVM-List (`8E`) — amounts + cardholder-verification rules | ✅ done |
+| 14 | Wider tag & sensitive-field coverage (masking + named terminal tags) | ✅ done |
 | — | Publish to Maven Central | ⬜ planned |
 
 **380+ tests. Zero runtime dependencies. No real cardholder data anywhere in the repo.**
@@ -273,8 +313,8 @@ Tagscope is — stated with its limits, because the honesty is the point.
 |---|---|---|
 | Terminal development & field-level troubleshooting | Byte-level fluency in the EMV data model — BER-TLV parsing, ~40 core tags, and TVR / AIP / CID / IAC bit-fields decoded to plain English: the exact reading you do when a terminal declines in the field | A terminal or payment kernel — no live transaction execution |
 | Certification testing & defect resolution | The triage instinct cert work runs on — *trust the raw bytes over the published summary* (a real published-summary error is corrected and pinned in the tests) — plus golden vectors verified byte-for-byte against **EMVCo Book 3 v4.4** and mutation-tested | Certification experience — no payment-processor integration |
-| EMV transaction flows & terminal parameters | Recognizes the PDOL/CDOL a terminal fills for GPO / GENERATE AC, and fully decodes the AIP / CID / TVR action-analysis data and the IAC / AUC parameters themselves | The flow engine or a parameter-management system |
-| Java & Kotlin application development | Production **Kotlin/JVM**: idiomatic sealed types, **zero runtime dependencies**, **360 tests**, green CI, byte-verified against the spec | (The codebase is Kotlin on the JVM; Java interop is native but not exercised here) |
+| EMV transaction flows & terminal parameters | Decodes the PDOL/CDOL the terminal fills for GPO / GENERATE AC into their `(tag, length)` entries, and fully decodes the AIP / CID / TVR action-analysis data and the IAC / AUC parameters themselves | The flow engine or a parameter-management system |
+| Java & Kotlin application development | Production **Kotlin/JVM**: idiomatic sealed types, **zero runtime dependencies**, **380+ tests**, green CI, byte-verified against the spec | (The codebase is Kotlin on the JVM; Java interop is native but not exercised here) |
 | Cross-functional certification collaboration | Collaboration-ready habits: honestly-scoped claims, atomic reviewable commits, and docs a QA or cert partner can follow | Team/cross-functional experience — this is a solo project |
 
 **In one line:** this is the EMV data-model fluency and the byte-level verification discipline the
