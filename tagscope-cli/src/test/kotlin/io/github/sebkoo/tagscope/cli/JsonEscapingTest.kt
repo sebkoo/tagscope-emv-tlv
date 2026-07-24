@@ -30,6 +30,7 @@ class JsonEscapingTest {
                     valueHex = "00",
                     meanings = emptyList(),
                     dolEntries = null,
+                    cvm = null,
                     decodeNote = null,
                     children = emptyList(),
                 ),

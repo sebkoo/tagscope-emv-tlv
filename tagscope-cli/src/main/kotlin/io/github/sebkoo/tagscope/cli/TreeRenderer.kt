@@ -44,6 +44,14 @@ internal fun renderTree(nodes: List<RenderNode>): String {
             for (entry in node.dolEntries.orEmpty()) {
                 append("  ".repeat(row.depth)).append(MEANING_PREFIX).append(dolEntryLine(entry)).append('\n')
             }
+            // A CVM List prints its two amounts as a header line, then one CV Rule per line beneath it,
+            // the same indented bullet the DOL entries and bit-field meanings use.
+            node.cvm?.let { cvm ->
+                append("  ".repeat(row.depth)).append(CVM_HEADER_PREFIX).append(cvmAmountsLine(cvm)).append('\n')
+                for (rule in cvm.rules) {
+                    append("  ".repeat(row.depth)).append(MEANING_PREFIX).append(cvmRuleLine(rule)).append('\n')
+                }
+            }
         }
     }.trimEnd('\n')
 }
@@ -51,6 +59,13 @@ internal fun renderTree(nodes: List<RenderNode>): String {
 private fun dolEntryLine(entry: DolEntryView): String {
     val unit = if (entry.length == 1) "byte" else "bytes"
     return "${entry.tagHex}  ${entry.name}  (${entry.length} $unit)"
+}
+
+private fun cvmAmountsLine(cvm: CvmListView): String = "amounts: X=${cvm.amountX}  Y=${cvm.amountY}"
+
+private fun cvmRuleLine(rule: CvmRuleView): String {
+    val outcome = if (rule.applyNextIfFailed) "apply next" else "fail"
+    return "${rule.method} — ${rule.condition} (else $outcome)"
 }
 
 private class Row(
@@ -83,3 +98,6 @@ private fun valueColumn(node: RenderNode): String? =
 private const val INDENT_WIDTH: Int = 2
 private const val GAP: String = "  "
 private const val MEANING_PREFIX: String = "      - "
+
+/** The CVM List amounts header sits where the bullets do, but without the dash: it is a heading. */
+private const val CVM_HEADER_PREFIX: String = "      "

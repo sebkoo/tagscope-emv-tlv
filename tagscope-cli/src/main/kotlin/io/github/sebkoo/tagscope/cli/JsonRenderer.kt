@@ -89,6 +89,11 @@ private fun scalarFields(node: RenderNode): List<Pair<String, String>> =
         if (node.dolEntries != null) {
             add("entries" to dolEntriesJson(node.dolEntries))
         }
+        if (node.cvm != null) {
+            add("amountX" to node.cvm.amountX.toString())
+            add("amountY" to node.cvm.amountY.toString())
+            add("rules" to cvmRulesJson(node.cvm.rules))
+        }
     }
 
 /** A DOL's entries as a JSON array of `{tag, name, length}`, in wire order. */
@@ -99,6 +104,20 @@ private fun dolEntriesJson(entries: List<DolEntryView>): String =
             append(jsonString("tag")).append(": ").append(jsonString(entry.tagHex)).append(", ")
             append(jsonString("name")).append(": ").append(jsonString(entry.name)).append(", ")
             append(jsonString("length")).append(": ").append(entry.length)
+            append('}')
+        }
+    }
+
+/** A CVM List's CV Rules as a JSON array of `{method, methodCode, applyNextIfFailed, condition, conditionCode}`. */
+private fun cvmRulesJson(rules: List<CvmRuleView>): String =
+    rules.joinToString(prefix = "[", postfix = "]", separator = ", ") { rule ->
+        buildString {
+            append('{')
+            append(jsonString("method")).append(": ").append(jsonString(rule.method)).append(", ")
+            append(jsonString("methodCode")).append(": ").append(rule.methodCode).append(", ")
+            append(jsonString("applyNextIfFailed")).append(": ").append(rule.applyNextIfFailed).append(", ")
+            append(jsonString("condition")).append(": ").append(jsonString(rule.condition)).append(", ")
+            append(jsonString("conditionCode")).append(": ").append(rule.conditionCode)
             append('}')
         }
     }

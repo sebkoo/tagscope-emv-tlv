@@ -1,5 +1,6 @@
 package io.github.sebkoo.tagscope.cli
 
+import io.github.sebkoo.tagscope.decode.CvmCodes
 import io.github.sebkoo.tagscope.decode.DecodeError
 import io.github.sebkoo.tagscope.decode.DecodeResult
 import io.github.sebkoo.tagscope.decode.DecodedValue
@@ -25,6 +26,7 @@ import io.github.sebkoo.tagscope.tlv.TlvNode
  * @property valueHex the raw value octets as hex, or `null` when withheld (masked) or constructed.
  * @property meanings decoded bit-field meanings, one per entry; empty for everything else.
  * @property dolEntries a Data Object List's (tag, name, length) requests, or `null` for a non-DOL.
+ * @property cvm a CVM List's amounts and CV Rules, or `null` for a non-CVM-List.
  * @property decodeNote why a non-sensitive value would not decode, or `null`.
  */
 internal class RenderNode(
@@ -39,6 +41,7 @@ internal class RenderNode(
     val valueHex: String?,
     val meanings: List<String>,
     val dolEntries: List<DolEntryView>?,
+    val cvm: CvmListView?,
     val decodeNote: String?,
     val children: List<RenderNode>,
 )
@@ -51,6 +54,29 @@ internal class DolEntryView(
     val tagHex: String,
     val name: String,
     val length: Int,
+)
+
+/**
+ * A Cardholder Verification Method List ready to render: its two amount thresholds and its CV Rules,
+ * the method and condition names resolved here at render time via `CvmCodes` — never stored on the
+ * decoded value, the same way a DOL entry's name is looked up here.
+ */
+internal class CvmListView(
+    val amountX: Long,
+    val amountY: Long,
+    val rules: List<CvmRuleView>,
+)
+
+/**
+ * One CV Rule ready to render: the resolved method and condition names, the codes they came from,
+ * and whether an unsuccessful CVM applies the next rule (true) or fails cardholder verification.
+ */
+internal class CvmRuleView(
+    val method: String,
+    val methodCode: Int,
+    val applyNextIfFailed: Boolean,
+    val condition: String,
+    val conditionCode: Int,
 )
 
 /** Shown in a value column in place of a masked value, in the text tree. */
@@ -123,6 +149,7 @@ private fun renderPrimitive(
 ): RenderNode {
     var meanings: List<String> = emptyList()
     var dolEntries: List<DolEntryView>? = null
+    var cvm: CvmListView? = null
     val value: String? =
         when (decoded) {
             is DecodedValue.Digits -> decoded.digits
@@ -141,9 +168,13 @@ private fun renderPrimitive(
                 null
             }
             is DecodedValue.Track2 -> track2(decoded)
-            // A CVM List decodes to its amounts and CV Rules; rendering those as sub-lines lands in
-            // the next commit. Until then it shows its octets, as it did when it was opaque RawBinary.
-            is DecodedValue.CvmList -> rawHex
+            is DecodedValue.CvmList -> {
+                // A CVM List renders as its amounts and CV Rules, like a DOL renders as its entries:
+                // sub-lines beneath the node, the value column left empty. The method and condition
+                // names are resolved here, at render time, from the codes — never stored on the value.
+                cvm = cvmListView(decoded)
+                null
+            }
             // Unreachable for a primitive: Constructed is handled above and Sensitive was unwrapped.
             // Fall back to something that reveals nothing, so an invariant slip cannot leak.
             is DecodedValue.Constructed -> rawHex
@@ -154,10 +185,12 @@ private fun renderPrimitive(
         name,
         sensitive,
         value = value,
-        // A DOL carries no value octets to show, so it emits its entries in place of a hex value.
-        valueHex = if (dolEntries != null) null else rawHex,
+        // A DOL and a CVM List carry no scalar value to show: they emit their sub-lines in place of a
+        // hex value, so the value column and the hex field are both left empty.
+        valueHex = if (dolEntries != null || cvm != null) null else rawHex,
         meanings = meanings,
         dolEntries = dolEntries,
+        cvm = cvm,
     )
 }
 
@@ -165,6 +198,22 @@ private fun dolEntryView(entry: DecodedValue.Dol.Entry): DolEntryView {
     val info = (TagDictionary.lookup(entry.tag) as? TagLookup.Known)?.info
     return DolEntryView(entry.tag.hex, info?.name ?: UNKNOWN_TAG_NAME, entry.length)
 }
+
+private fun cvmListView(value: DecodedValue.CvmList): CvmListView =
+    CvmListView(
+        amountX = value.amountX,
+        amountY = value.amountY,
+        rules =
+            value.rules.map { rule ->
+                CvmRuleView(
+                    method = CvmCodes.method(rule.methodCode),
+                    methodCode = rule.methodCode,
+                    applyNextIfFailed = rule.applyNextIfFailed,
+                    condition = CvmCodes.condition(rule.conditionCode),
+                    conditionCode = rule.conditionCode,
+                )
+            },
+    )
 
 private fun track2(value: DecodedValue.Track2): String =
     buildString {
@@ -214,6 +263,7 @@ private fun leafless(
         valueHex = null,
         meanings = emptyList(),
         dolEntries = null,
+        cvm = null,
         decodeNote = null,
         children = children,
     )
@@ -226,6 +276,7 @@ private fun primitive(
     valueHex: String?,
     meanings: List<String> = emptyList(),
     dolEntries: List<DolEntryView>? = null,
+    cvm: CvmListView? = null,
     decodeNote: String? = null,
 ): RenderNode =
     RenderNode(
@@ -240,6 +291,7 @@ private fun primitive(
         valueHex = valueHex,
         meanings = meanings,
         dolEntries = dolEntries,
+        cvm = cvm,
         decodeNote = decodeNote,
         children = emptyList(),
     )
