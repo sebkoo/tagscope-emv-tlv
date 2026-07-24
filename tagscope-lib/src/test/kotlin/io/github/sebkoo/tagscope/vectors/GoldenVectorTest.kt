@@ -115,12 +115,6 @@ class GoldenVectorTest {
                 assertEquals(expected.size, raw.size, "$where opaque size")
                 assertArrayEquals(node.valueBytes(), raw.bytes(), "$where opaque passthrough")
             }
-            is ExpectedDecode.RawAscii ->
-                assertArrayEquals(
-                    expected.ascii.toByteArray(Charsets.US_ASCII),
-                    rawOctets(value, where),
-                    "$where ascii octets",
-                )
             is ExpectedDecode.Text -> assertEquals(DecodedValue.Text(expected.text), value, "$where text")
             is ExpectedDecode.Digits -> assertEquals(DecodedValue.Digits(expected.digits), value, "$where digits")
             is ExpectedDecode.Date ->

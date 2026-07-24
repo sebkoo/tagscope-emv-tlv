@@ -92,8 +92,9 @@ private val CID_00_AAC: List<ExpectedDecode.Selection> =
  */
 internal val VECTORS: List<GoldenVector> =
     listOf(
-        // 1 - PSE FCI. Nested constructed templates; DF Name is ASCII but tag 84 is BINARY, so it
-        // decodes to RawBinary rather than Text.
+        // 1 - PSE FCI. Nested constructed templates; the DF Name is printable ASCII, so tag 84
+        // decodes to Text ("1PAY.SYS.DDF01") though Annex A formats it BINARY. The value octets are
+        // unchanged — only the reading is text — so the structural hex below stays the same.
         GoldenVector(
             name = "PSE FCI",
             hexFile = "01-pse-fci.hex",
@@ -103,7 +104,7 @@ internal val VECTORS: List<GoldenVector> =
                 tlv(
                     "6F",
                     0x15,
-                    leaf("84", 0x0E, rawAscii("1PAY.SYS.DDF01"), value = "315041592E5359532E4444463031"),
+                    leaf("84", 0x0E, text("1PAY.SYS.DDF01"), value = "315041592E5359532E4444463031"),
                     tlv(
                         "A5",
                         0x03,

@@ -6,6 +6,7 @@ import io.github.sebkoo.tagscope.decode.DecodedValue.Date
 import io.github.sebkoo.tagscope.decode.DecodedValue.Digits
 import io.github.sebkoo.tagscope.decode.DecodedValue.RawBinary
 import io.github.sebkoo.tagscope.decode.DecodedValue.Sensitive
+import io.github.sebkoo.tagscope.decode.DecodedValue.Text
 import io.github.sebkoo.tagscope.decode.DecodedValue.Track2
 import io.github.sebkoo.tagscope.tags.TagDictionary
 import io.github.sebkoo.tagscope.tags.TagFormat
@@ -61,6 +62,25 @@ class ValueDecoderTest {
 
         assertEquals(RawBinary("0123456789ABCDEF".octets()), cryptogram)
         assertEquals(RawBinary("AABBCCDD".octets()), issuerData)
+    }
+
+    @Test
+    fun `a printable DF Name is read as text, though tag 84 is binary`() {
+        // 84 is BINARY in Annex A, but the PSE directory's DF Name is the ASCII "1PAY.SYS.DDF01":
+        // printable, so it is read as text. The octets are 315041592E5359532E4444463031.
+        assertEquals(Text("1PAY.SYS.DDF01"), decode("840E315041592E5359532E4444463031").expectValue())
+    }
+
+    @Test
+    fun `a binary DF Name stays octets, since an AID is not text`() {
+        // The Visa ADF's 84 is the AID A0000000031010: A0 is not printable, so it is not text and
+        // comes back as octets, exactly as any opaque b does.
+        assertEquals(RawBinary("A0000000031010".octets()), decode("8407A0000000031010").expectValue())
+        // No octet is trimmed on the way: a trailing null is not stripped, and one non-printable
+        // octet is enough to force the whole value back to octets.
+        assertEquals(RawBinary("31313100".octets()), decode("840431313100").expectValue())
+        // An empty DF Name is octets, not an empty string.
+        assertEquals(RawBinary(ByteArray(0)), decode("8400").expectValue())
     }
 
     @Test

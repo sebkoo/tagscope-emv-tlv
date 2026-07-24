@@ -85,9 +85,9 @@ public object ValueDecoder {
 
     /**
      * `b`, which is octets unless the tag says the octets have a structure worth reading: Track 2
-     * (`57`), or one of the bit-field tags [BitFieldTable] carries. A cryptogram (`9F26`) and the
-     * Issuer Application Data (`9F10`) match neither and go no further, opaque to this library by
-     * design rather than merely undecoded.
+     * (`57`), the DF Name (`84`) when it is textual, or one of the bit-field tags [BitFieldTable]
+     * carries. A cryptogram (`9F26`) and the Issuer Application Data (`9F10`) match none and go no
+     * further, opaque to this library by design rather than merely undecoded.
      */
     private fun binary(
         node: TlvNode,
@@ -95,11 +95,31 @@ public object ValueDecoder {
     ): DecodeResult =
         when (node.tag) {
             TRACK2_TAG -> track2(node, value)
+            DF_NAME_TAG -> dfName(value)
             else ->
                 when (val spec = BitFieldTable.specFor(node.tag)) {
                     null -> DecodeResult.Success(DecodedValue.RawBinary(value))
                     else -> bitField(node, value, spec)
                 }
+        }
+
+    /**
+     * DF Name (`84`): the name of the selected file. Annex A formats it `b`, but the value is a
+     * registered identifier that is textual for a directory — the PSE's is the ASCII
+     * `1PAY.SYS.DDF01` — and binary for an ADF, where it is the AID (`A0000000031010`). So it is
+     * read as text when every octet is printable, since a name is meant to be read, and handed back
+     * as octets otherwise, exactly as any opaque `b` is.
+     *
+     * No filler is stripped and none is tolerated: a DF Name states no padding, so a trailing `00`
+     * or space belongs to the name or is the anomaly worth seeing as hex, not something to trim. An
+     * empty value is octets, not an empty string.
+     */
+    private fun dfName(value: ByteArray): DecodeResult =
+        if (value.isNotEmpty() && value.all { isCommonCharacter(it.toInt() and UNSIGNED_OCTET) }) {
+            // Every octet is printable ASCII, so this decoding cannot substitute or replace anything.
+            DecodeResult.Success(DecodedValue.Text(String(value, Charsets.US_ASCII)))
+        } else {
+            DecodeResult.Success(DecodedValue.RawBinary(value))
         }
 
     /**
@@ -503,6 +523,9 @@ public object ValueDecoder {
 
     /** Track 2 Equivalent Data, the one `b` object this library reads the structure of. */
     private val TRACK2_TAG: TlvTag = TlvTag(value = 0x57, octetLength = 1)
+
+    /** DF Name (`84`): `b` in Annex A, but textual for a PSE directory and binary for an AID. */
+    private val DF_NAME_TAG: TlvTag = TlvTag(value = 0x84, octetLength = 1)
 
     /**
      * Longest each month can be, indexed from January. February is the common 28 here; the leap

@@ -28,7 +28,7 @@ class JsonOutputTest {
                 "class": "context-specific",
                 "constructed": false,
                 "length": 14,
-                "value": "315041592E5359532E4444463031",
+                "value": "1PAY.SYS.DDF01",
                 "hex": "315041592E5359532E4444463031"
               },
               {

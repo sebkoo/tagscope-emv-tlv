@@ -16,7 +16,7 @@ class TreeOutputTest {
     private val pseFciTree =
         listOf(
             "6F      File Control Information (FCI) Template              [21]",
-            "  84    Dedicated File (DF) Name                             [14]  315041592E5359532E4444463031",
+            "  84    Dedicated File (DF) Name                             [14]  1PAY.SYS.DDF01",
             "  A5    File Control Information (FCI) Proprietary Template  [3]",
             "    88  Short File Identifier (SFI)                          [1]   01",
         ).joinToString("\n")

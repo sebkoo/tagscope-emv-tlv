@@ -113,11 +113,6 @@ internal sealed interface ExpectedDecode {
         val size: Int,
     ) : ExpectedDecode
 
-    /** `DecodedValue.RawBinary` whose octets are the US-ASCII encoding of [ascii]. */
-    data class RawAscii(
-        val ascii: String,
-    ) : ExpectedDecode
-
     /** `DecodedValue.Text([text])`, with no padding stripped. */
     data class Text(
         val text: String,
@@ -168,9 +163,6 @@ internal fun raw(hex: String): ExpectedDecode = ExpectedDecode.Raw(hex)
 
 /** Opaque `DecodedValue.RawBinary` of [size] octets, never interpreted. */
 internal fun rawOpaque(size: Int): ExpectedDecode = ExpectedDecode.RawOpaque(size)
-
-/** `DecodedValue.RawBinary` whose octets spell [ascii] — printable bytes the decoder leaves opaque. */
-internal fun rawAscii(ascii: String): ExpectedDecode = ExpectedDecode.RawAscii(ascii)
 
 /** `DecodedValue.Text([text])`. */
 internal fun text(text: String): ExpectedDecode = ExpectedDecode.Text(text)
